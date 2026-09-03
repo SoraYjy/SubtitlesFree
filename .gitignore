@@ -1,0 +1,19 @@
+bin/
+obj/
+.vs/
+*.user
+node_modules/
+# 分发打包产物
+dist/
+# Python 引擎虚拟环境与测试素材（体积大，自备）
+engine/.venv/
+engine/samples/
+# 一次性 spike 探针
+probe/
+# 开发过程草稿（superpowers plan/spec，含本机路径）
+docs/
+__pycache__/
+*.pyc
+.pytest_cache/
+# 开发过程工具目录（superpowers 计划/报告）
+.superpowers/
