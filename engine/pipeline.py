@@ -31,6 +31,21 @@ def _local_model_dir(name: str) -> str | None:
     return str(d) if d.is_dir() else None
 
 
+def _local_asr_dir(model: str) -> str | None:
+    """按所选模型解析本地 ASR 目录（不静默替换成别的模型）。
+
+    turbo 兼容 T5 遗留约定 models/asr；其余模型只认 models/{model} 同名目录，
+    不存在则返回 None 走 HF 在线下载——否则「选 large-v3 实际跑 turbo」会让
+    双语翻译（turbo 无 zh→en 翻译能力，T10 实测）静默失效。
+    """
+    names = [model] + (["asr"] if model == "large-v3-turbo" else [])
+    for name in names:
+        d = _MODELS_DIR / name
+        if d.is_dir():
+            return str(d)
+    return None
+
+
 @contextmanager
 def _stdout_to_stderr():
     """把进程级 stdout（fd 1）暂时接到 stderr，吞掉第三方库的 stdout 噪声。
@@ -97,6 +112,8 @@ def run_pipeline(args) -> None:
     t0 = time.time()
     hotwords = [w.strip() for w in args.hotwords.replace("，", ",").split(",") if w.strip()]
     initial_prompt = ("以下是可能出现的专有名词：" + "，".join(hotwords) + "。") if hotwords else None
+    if args.bilingual and args.model == "large-v3-turbo":
+        emit_log("large-v3-turbo 的内置翻译实测多为中文回写，双语建议改选 large-v3 模型", "warn")
 
     emit_stage("load_model")
     _ensure_cudnn_on_path()  # 须在 ctranslate2 触碰 CUDA DLL 之前
@@ -106,9 +123,9 @@ def run_pipeline(args) -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         emit_log("CUDA 不可用，回退 CPU（速度会慢很多）", "warn")
-    asr_dir = _local_model_dir("asr")
+    asr_dir = _local_asr_dir(args.model)
     if asr_dir:
-        emit_log(f"使用本地 ASR 模型：{asr_dir}")
+        emit_log(f"使用本地 ASR 模型（{args.model}）：{asr_dir}")
     with _stdout_to_stderr():
         model = whisperx.load_model(
             asr_dir or args.model, device,
