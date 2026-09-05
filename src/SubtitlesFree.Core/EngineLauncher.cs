@@ -46,10 +46,10 @@ public sealed class EngineLauncher(string pythonPath, string engineScriptPath) :
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            rawLog?.Invoke(e.Data);
             EngineEvent? evt = EngineProtocol.ParseLine(e.Data);
             if (evt is ErrorEvent) sawErrorEvent = true;
             if (evt is not null) onEvent?.Invoke(evt);
+            else rawLog?.Invoke(e.Data); // 只收非 JSON 行，事件行已走 onEvent，避免 GUI 日志重复
         };
         var stderrTail = new Queue<string>();
         process.ErrorDataReceived += (_, e) =>

@@ -8,9 +8,9 @@ public class EngineLauncherTests
     private static readonly string FakeEngine = Path.Combine(
         AppContext.BaseDirectory, "fake_engine.py");
 
-    private static string FindPython()
-        => Environment.GetEnvironmentVariable("SF_TEST_PYTHON")
-           ?? @"D:\sora\SubtitlesFree\engine\.venv\Scripts\python.exe";
+    /// <summary>子进程测试用 Python：SF_TEST_PYTHON 或缺省 venv；换机器不存在则跳过（机器解耦）。
+    /// BuildCommandLine 纯函数测试不经此路径，保持无条件运行。</summary>
+    private static string FindPython() => TestPython.Resolve();
 
     /// <summary>生成带参数的假引擎包装脚本。
     /// brief 原写法 FakeEngine + " --error" 会被 BuildCommandLine 的引号整体包成一个文件名，
@@ -56,7 +56,7 @@ public class EngineLauncherTests
         Assert.DoesNotContain("--hotwords", args);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RunAsync_WithFakeEngine_ReceivesAllEvents()
     {
         var launcher = new EngineLauncher(FindPython(), FakeEngine);
@@ -68,9 +68,10 @@ public class EngineLauncherTests
         Assert.Contains(events, e => e is ProgressEvent { Value: 0.5 });
         Assert.Contains(events, e => e is DoneEvent { Segments: 2 });
         Assert.Contains(raws, r => r.Contains("not-json-garbage")); // 非 JSON 行进 rawLog
+        Assert.DoesNotContain(raws, r => r.TrimStart().StartsWith("{\"type\"")); // JSON 行不重复进 rawLog
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RunAsync_FakeEngineError_CompletesWithoutThrowing()
     {
         var launcher = new EngineLauncher(FindPython(), FakeEngineWithArgs("--error"));
@@ -80,7 +81,7 @@ public class EngineLauncherTests
         Assert.Contains(events, e => e is ErrorEvent { Code: "oom" });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RunAsync_Cancel_ThrowsAndKillsProcess()
     {
         var launcher = new EngineLauncher(FindPython(), FakeEngineWithArgs("--sleep"));

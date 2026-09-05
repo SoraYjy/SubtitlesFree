@@ -3,6 +3,20 @@ using Xunit;
 
 namespace SubtitlesFree.Core.Tests;
 
+public static class TestPython
+{
+    /// <summary>解析测试用 Python：SF_TEST_PYTHON 优先，缺省回退本仓库 venv。
+    /// 换机器跑测试时路径不存在 → Skip，而非失败（机器解耦）。</summary>
+    public static string Resolve()
+    {
+        string? python = Environment.GetEnvironmentVariable("SF_TEST_PYTHON");
+        if (string.IsNullOrWhiteSpace(python))
+            python = @"D:\sora\SubtitlesFree\engine\.venv\Scripts\python.exe";
+        Skip.If(!File.Exists(python), $"测试 Python 不存在，跳过（可设 SF_TEST_PYTHON 指向 engine venv）：{python}");
+        return python;
+    }
+}
+
 public class EnvironmentCheckerTests
 {
     [Theory]
@@ -110,21 +124,15 @@ public class EnvironmentCheckerTests
         Assert.DoesNotContain("pip", torch.Hint);
     }
 
-    [Fact]
-    public async Task CheckAsync_OnThisMachine_TorchAndCudaOk()
+    [SkippableFact]
+    public async Task CheckAsync_WithVenvPython_TorchAndCudaOk()
     {
-        // 本机集成测试：依赖 engine/.venv 已装好（Task 1 前置）
-        string python = Environment.GetEnvironmentVariable("SF_TEST_PYTHON")
-            ?? @"D:\sora\SubtitlesFree\engine\.venv\Scripts\python.exe";
-        var report = await EnvironmentChecker.CheckAsync(python, "large-v3-turbo");
+        // 集成测试：依赖 engine/.venv 已装好（SF_TEST_PYTHON 或缺省 venv，无则跳过）
+        var report = await EnvironmentChecker.CheckAsync(TestPython.Resolve(), "large-v3-turbo");
         Assert.True(report.PythonOk);
         Assert.True(report.TorchOk);
         Assert.True(report.CudaOk);
         Assert.True(report.WhisperXOk);
-        Assert.True(report.ModelCached);  // ruling 3：T5 已把模型移到 engine/models/asr（本地路径存在）
-        Assert.Equal("NVIDIA GeForce RTX 3080 Ti", report.GpuName);
-        // ruling 1：本机 ffmpeg 不在 PATH 上 → FfmpegOk=false，AllOk 因此为 false
-        Assert.False(report.FfmpegOk);
-        Assert.False(report.AllOk);
+        // GPU 型号 / ModelCached / ffmpeg 是否在 PATH 随机器与预下载状态而变，不做断言
     }
 }

@@ -106,6 +106,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Label Grid.Row="0" Grid.Column="0" Content="模型："/>
@@ -135,6 +136,22 @@
                 <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
                          Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="留空=自动探测（应用旁 engine/.venv 优先）" Margin="0,2,0,2"/>
+
+                <!-- F3：large-v3-turbo 无翻译引擎，双语时英文行为中文回写（只警告不禁选） -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4"
+                           Text="⚠ large-v3-turbo 不支持中→英翻译，英文行将为中文回写；双语请切 large-v3"
+                           Foreground="#C62828" TextWrapping="Wrap" Margin="0,4,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding BilingualTurboWarning}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
         </Expander>
 

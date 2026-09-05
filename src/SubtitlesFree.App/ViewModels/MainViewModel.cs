@@ -48,6 +48,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _useMirror = true;
     [ObservableProperty] private string _pythonPath = "";
 
+    /// <summary>large-v3-turbo 不支持翻译引擎，双语模式下英文行将是中文回写（内联警告，不禁止选择）。</summary>
+    [ObservableProperty] private bool _bilingualTurboWarning;
+
     public ObservableCollection<StepItem> Steps { get; } = new();
 
     /// <summary>环境状态条逐项 ✅/✗（spec §6），每次「检测环境」后重建。</summary>
@@ -65,6 +68,7 @@ public partial class MainViewModel : ObservableObject
         UseMirror = _svc.Settings.UseMirror;
         PythonPath = _svc.Settings.PythonPath;
         BuildSteps();
+        UpdateBilingualTurboWarning();
         _ = CheckEnv();
     }
 
@@ -77,17 +81,21 @@ public partial class MainViewModel : ObservableObject
         foreach (string t in titles) Steps.Add(new StepItem(t));
     }
 
-    partial void OnModelChanged(string value) { _svc.Settings.Model = value; _svc.SaveSettings(); }
+    partial void OnModelChanged(string value) { _svc.Settings.Model = value; _svc.SaveSettings(); UpdateBilingualTurboWarning(); }
     partial void OnLanguageModeChanged(string value)
     {
         _svc.Settings.LanguageMode = value;
         BuildSteps();
         _svc.SaveSettings();
+        UpdateBilingualTurboWarning();
     }
     partial void OnComputeTypeChanged(string value) { _svc.Settings.ComputeType = value; _svc.SaveSettings(); }
     partial void OnHotwordsChanged(string value) { _svc.Settings.Hotwords = value; _svc.SaveSettings(); }
     partial void OnUseMirrorChanged(bool value) { _svc.Settings.UseMirror = value; _svc.SaveSettings(); }
     partial void OnPythonPathChanged(string value) { _svc.Settings.PythonPath = value; _svc.SaveSettings(); }
+
+    private void UpdateBilingualTurboWarning()
+        => BilingualTurboWarning = Model == "large-v3-turbo" && LanguageMode == "bilingual";
 
     public void VideoDropped(string path)
     {
@@ -131,6 +139,8 @@ public partial class MainViewModel : ObservableObject
         ResetRun();
         _cts = new CancellationTokenSource();
         var launcher = new EngineLauncher(_svc.ResolvePython(), _svc.EngineScriptPath);
+        if (BilingualTurboWarning)
+            AppendLog("large-v3-turbo 不支持中→英翻译，英文行将为中文回写；双语请切 large-v3", "WARN");
         try
         {
             await launcher.RunAsync(req, _cts.Token, OnEngineEvent, s => AppendLog(s));
@@ -144,6 +154,11 @@ public partial class MainViewModel : ObservableObject
         {
             StatusText = "生成失败（详见日志）";
             AppendLog(ex.Message, "ERROR");
+        }
+        catch (Exception ex)
+        {
+            StatusText = "生成失败（详见日志）";
+            AppendLog($"生成异常：{ex.Message}", "ERROR");
         }
         finally
         {
