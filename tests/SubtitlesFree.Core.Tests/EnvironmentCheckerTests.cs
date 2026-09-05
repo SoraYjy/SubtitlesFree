@@ -35,6 +35,43 @@ public class EnvironmentCheckerTests
     public void ModelRepoDir_MapsModelToHfCacheDir(string model, string dir)
         => Assert.Equal(dir, EnvironmentChecker.ModelRepoDir(model));
 
+    [Fact]
+    public void LocalAsrCandidates_NonTurbo_OnlySelfNamedDir()
+    {
+        // 与 engine/pipeline.py 同语义：非 turbo 只认 engine/models/<model>，不认遗留 asr
+        string[] dirs = EnvironmentChecker.LocalAsrCandidates("small", @"C:\app").ToArray();
+        Assert.Equal([Path.Combine(@"C:\app", "engine", "models", "small")], dirs);
+        Assert.DoesNotContain(dirs, d => d.EndsWith("asr", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LocalAsrCandidates_Turbo_SelfNamedDirFirstThenLegacyAsr()
+    {
+        string[] dirs = EnvironmentChecker.LocalAsrCandidates("large-v3-turbo", @"C:\app").ToArray();
+        Assert.Equal(
+        [
+            Path.Combine(@"C:\app", "engine", "models", "large-v3-turbo"), // 同名目录优先
+            Path.Combine(@"C:\app", "engine", "models", "asr"),            // turbo 兼容 T5 遗留布局
+        ], dirs);
+    }
+
+    [Fact]
+    public void LocalAsrCandidates_OnlySelfNamedDirPreloaded_SatisfiesCacheCheck()
+    {
+        // 新机器只预下载 models/large-v3：large-v3 应判定已缓存（旧实现只探 asr 会误报未缓存）
+        string root = Path.Combine(Path.GetTempPath(), "sftest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "engine", "models", "large-v3"));
+            Assert.Contains(EnvironmentChecker.LocalAsrCandidates("large-v3", root), Directory.Exists);
+            Assert.DoesNotContain(EnvironmentChecker.LocalAsrCandidates("small", root), Directory.Exists); // 不跨模型顶替
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static EnvReport MakeReport(
         bool py = true, bool torch = true, bool cuda = true, bool wx = true,
         bool model = true, bool ffmpeg = true) =>

@@ -51,17 +51,18 @@ public static class EnvironmentChecker
             && await RunCaptureAsync(python, "-c \"import whisperx;print('ok')\"", 60, log) is not null;
         log?.Invoke(whisperxOk ? "whisperx 已安装" : "whisperx 未安装");
 
-        // 4) 模型缓存：本地 engine/models/asr（T5 迁移后首选）或 HF hub 缓存
+        // 4) 模型缓存：本地 engine/models/<model>（turbo 另认遗留 engine/models/asr）或 HF hub 缓存，
+        //    候选目录与 engine/pipeline.py 的 _local_asr_dir 同语义（同名目录优先，不跨模型顶替）
         string baseDir = AppContext.BaseDirectory;
-        string[] localCandidates =
+        string[] roots =
         [
-            Path.Combine(baseDir, "engine", "models", "asr"),                    // 发布布局
-            Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "engine", "models", "asr"),                                      // 开发仓库布局（上溯 5 级到仓库根）
+            baseDir,                                                   // 发布布局（dist/SubtitlesFree/）
+            Path.Combine(baseDir, "..", "..", "..", "..", ".."),       // 开发仓库布局（上溯 5 级到仓库根）
         ];
         string hubDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".cache", "huggingface", "hub", ModelRepoDir(selectedModel));
-        bool modelCached = localCandidates.Any(Directory.Exists) || Directory.Exists(hubDir);
+        bool modelCached = roots.SelectMany(r => LocalAsrCandidates(selectedModel, r)).Any(Directory.Exists)
+            || Directory.Exists(hubDir);
         string modelDetail = modelCached ? $"{selectedModel} 已缓存" : $"{selectedModel} 未缓存（首跑会下载）";
         log?.Invoke(modelDetail);
 
@@ -122,6 +123,17 @@ public static class EnvironmentChecker
         "small" => "models--Systran--faster-whisper-small",
         _ => "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo",
     };
+
+    /// <summary>模型名 → 单根下的本地 ASR 候选目录（镜像 engine/pipeline.py 的 _local_asr_dir 语义）：
+    /// engine/models/<model> 同名目录优先；仅 turbo 额外兼容遗留 engine/models/asr，
+    /// 其余模型不认 asr（否则会把「缓存了 turbo」误报成「所选模型已就绪」）。</summary>
+    public static IEnumerable<string> LocalAsrCandidates(string model, string root)
+    {
+        string modelsDir = Path.Combine(root, "engine", "models");
+        yield return Path.Combine(modelsDir, model);
+        if (model == "large-v3-turbo")
+            yield return Path.Combine(modelsDir, "asr");
+    }
 
     /// <summary>跑命令取全部 stdout；失败/超时返回 null。超时杀进程。</summary>
     private static async Task<string?> RunCaptureAsync(

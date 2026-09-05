@@ -3,9 +3,10 @@
 事件契约 spec §5.2；进度为阶段粒度尽力而为。
 技术路径为 SETUP.md 结论 PATH_A（whisperx 原生 VAD 管道）。
 
-模型解析：优先使用本文件同级 models/{asr,align} 本地目录（离线可用，权重
-从 ModelScope 镜像预先下载，见 SETUP.md）；目录不存在则回退 --model 参数走
-HuggingFace 在线下载（供有网用户）。路径以 pipeline.py 自身位置解析，与 cwd 无关。
+模型解析：ASR 优先本文件同级 models/<model> 同名目录（turbo 兼容遗留
+models/asr），对齐用 models/align（离线可用，权重从 ModelScope 镜像预先下载，
+见 SETUP.md）；目录不存在则回退 --model 参数走 HuggingFace 在线下载（供有网
+用户）。路径以 pipeline.py 自身位置解析，与 cwd 无关。
 """
 import os
 import sys
