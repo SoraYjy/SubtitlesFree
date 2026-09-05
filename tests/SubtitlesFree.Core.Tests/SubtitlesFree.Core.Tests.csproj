@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\src\SubtitlesFree.Core\SubtitlesFree.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="fake_engine.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
