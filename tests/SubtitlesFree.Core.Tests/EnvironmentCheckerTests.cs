@@ -35,6 +35,44 @@ public class EnvironmentCheckerTests
     public void ModelRepoDir_MapsModelToHfCacheDir(string model, string dir)
         => Assert.Equal(dir, EnvironmentChecker.ModelRepoDir(model));
 
+    private static EnvReport MakeReport(
+        bool py = true, bool torch = true, bool cuda = true, bool wx = true,
+        bool model = true, bool ffmpeg = true) =>
+        new(py, "Python 3.11", torch, cuda, wx, model, "已缓存", "GPU", 12288, 100, ffmpeg);
+
+    [Fact]
+    public void BuildItems_AllOk_FiveGreenItemsNoHints()
+    {
+        var items = EnvironmentChecker.BuildItems(MakeReport());
+        Assert.Equal(["Python", "torch+CUDA", "whisperx", "模型缓存", "ffmpeg"],
+            items.Select(i => i.Label));
+        Assert.All(items, i => Assert.True(i.Ok));
+        Assert.All(items, i => Assert.Equal("", i.Hint));
+    }
+
+    [Fact]
+    public void BuildItems_AllMissing_EachHasSpecificHint()
+    {
+        var items = EnvironmentChecker.BuildItems(
+            MakeReport(py: false, torch: false, cuda: false, wx: false, model: false, ffmpeg: false));
+        Assert.All(items, i => Assert.False(i.Ok));
+        Assert.Contains("Python 路径", items[0].Hint);
+        Assert.Contains("cu124", items[1].Hint);           // torch 缺 → pip cu124 命令
+        Assert.Equal("pip install whisperx", items[2].Hint);
+        Assert.Contains("ModelScope", items[3].Hint);      // 模型缺 → 预下载提示
+        Assert.Equal("安装 ffmpeg 并加入 PATH（winget install Gyan.FFmpeg）", items[4].Hint);
+    }
+
+    [Fact]
+    public void BuildItems_TorchOkCudaMissing_HintsDriverNotPip()
+    {
+        var torch = EnvironmentChecker.BuildItems(MakeReport(cuda: false))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.False(torch.Ok);
+        Assert.Contains("驱动", torch.Hint);
+        Assert.DoesNotContain("pip", torch.Hint);
+    }
+
     [Fact]
     public async Task CheckAsync_OnThisMachine_TorchAndCudaOk()
     {

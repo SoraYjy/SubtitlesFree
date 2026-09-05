@@ -68,6 +68,9 @@ public sealed class EngineLauncher(string pythonPath, string engineScriptPath) :
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(ct);
+            // 排干异步输出回调（.NET 文档：同步 WaitForExit() 才等 async 读处理器收尾），
+            // 防止最后的 done/error 事件与 RunAsync 返回竞态丢失。
+            process.WaitForExit();
         }
         catch (OperationCanceledException)
         {

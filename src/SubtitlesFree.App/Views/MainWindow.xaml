@@ -26,13 +26,71 @@
             </StackPanel>
         </Border>
 
-        <!-- 1: 环境状态条 -->
-        <DockPanel Grid.Row="1" Margin="0,0,0,10">
-            <Button DockPanel.Dock="Right" Content="检测环境" Command="{Binding CheckEnvCommand}"
-                    Padding="12,3"/>
-            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="Bold"
-                       TextWrapping="Wrap"/>
-        </DockPanel>
+        <!-- 1: 环境状态条（汇总 + 逐项 ✅/✗ + 缺项修复提示，spec §6） -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="检测环境" Command="{Binding CheckEnvCommand}"
+                        Padding="12,3"/>
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="Bold"
+                           TextWrapping="Wrap"/>
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding EnvItems}" Margin="0,6,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="8,4" Margin="0,2,8,2" CornerRadius="4" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="#5C9E5C"/>
+                                    <Setter Property="Background" Value="#E6F4E6"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Ok}" Value="False">
+                                            <Setter Property="Background" Value="#FDECEA"/>
+                                            <Setter Property="BorderBrush" Value="#C62828"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="✅ "/>
+                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Ok}" Value="False">
+                                                        <Setter Property="Text" Value="❌ "/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Label}" FontWeight="Bold"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Hint}" TextWrapping="Wrap" MaxWidth="280"
+                                           Foreground="#B03A2E" FontSize="12" Margin="18,2,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Hint}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
 
         <!-- 2: 设置 -->
         <Expander Grid.Row="2" Header="设置（模型 / 语言 / 热词 / Python）" Margin="0,0,0,10">
@@ -130,8 +188,24 @@
                          VerticalScrollBarVisibility="Auto"/>
             </Expander>
 
-            <TextBlock Grid.Row="3" Text="{Binding Preview}" FontFamily="Consolas"
-                       TextWrapping="Wrap" Foreground="#333" Margin="0,8,0,0"/>
+            <!-- 完成态三要素：SRT 路径 + 打开文件夹按钮（底部）+ 预览（spec §6） -->
+            <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                <TextBlock Text="{Binding SrtPath, StringFormat=字幕已生成：{0}}" FontWeight="Bold"
+                           Foreground="#2E7D32" TextWrapping="Wrap">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SrtPath}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding Preview}" FontFamily="Consolas"
+                           TextWrapping="Wrap" Foreground="#333"/>
+            </StackPanel>
         </Grid>
 
         <!-- 4: 底部按钮 -->

@@ -50,6 +50,9 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<StepItem> Steps { get; } = new();
 
+    /// <summary>环境状态条逐项 ✅/✗（spec §6），每次「检测环境」后重建。</summary>
+    public ObservableCollection<EnvItem> EnvItems { get; } = new();
+
     public IReadOnlyList<string> ModelOptions { get; } = ["large-v3-turbo", "large-v3", "small"];
     public IReadOnlyList<string> ComputeTypeOptions { get; } = ["float16", "int8_float16"];
 
@@ -241,19 +244,24 @@ public partial class MainViewModel : ObservableObject
         StatusText = "检测环境…";
         var sw = Stopwatch.StartNew();
         _env = await EnvironmentChecker.CheckAsync(_svc.ResolvePython(), Model, l => AppendLog(l));
-        StatusText = _env.AllOk ? "环境就绪" : "环境有缺项，见日志提示";
-        AppendLog($"环境检测完成（{sw.Elapsed.TotalSeconds:F0}s）");
-        if (_env is { AllOk: false })
+        EnvItems.Clear();
+        foreach (EnvItem item in EnvironmentChecker.BuildItems(_env))
         {
-            AppendLog("修复参考：pip install torch --index-url https://download.pytorch.org/whl/cu124；"
-                      + "pip install whisperx", "WARN");
+            EnvItems.Add(item);
+            if (!item.Ok) AppendLog($"{item.Label}：{item.Hint}", "WARN");
         }
+        StatusText = _env.AllOk ? "环境就绪" : "环境有缺项，按红色项提示修复";
+        AppendLog($"环境检测完成（{sw.Elapsed.TotalSeconds:F0}s）");
     }
 
     internal void AppendLog(string msg, string? level = null)
     {
-        string line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
-        _svc.Logger.Info(msg);
+        string norm = level?.ToLowerInvariant() ?? "";
+        string prefix = norm switch { "warn" => "[WARN] ", "error" => "[ERROR] ", _ => "" };
+        string line = $"[{DateTime.Now:HH:mm:ss}] {prefix}{msg}";
+        if (norm == "warn") _svc.Logger.Warn(msg);
+        else if (norm == "error") _svc.Logger.Error(msg);
+        else _svc.Logger.Info(msg);
         _dispatcher.BeginInvoke(() =>
         {
             LogText = LogText.Length == 0 ? line : LogText + "\n" + line;

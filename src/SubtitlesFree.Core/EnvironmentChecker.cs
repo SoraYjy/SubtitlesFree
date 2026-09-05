@@ -14,6 +14,9 @@ public sealed record EnvReport(
     public bool AllOk => PythonOk && TorchOk && WhisperXOk && ModelCached && FfmpegOk;
 }
 
+/// <summary>环境状态条单项（spec §6）：Label + 通过与否 + 缺项修复提示。</summary>
+public sealed record EnvItem(string Label, bool Ok, string Hint);
+
 public static class EnvironmentChecker
 {
     /// <summary>探测 python/torch/whisperx/模型缓存/ffmpeg/显卡。每项独立，失败不中断。</summary>
@@ -26,7 +29,7 @@ public static class EnvironmentChecker
         string? ver = await RunCaptureAsync(python,
             "-c \"import sys;print(sys.version.split()[0])\"", 15, log);
         bool pyOk = ver is not null;
-        string pyDetail = pyOk ? $"Python {ver.Trim()}" : "未找到可用的 python";
+        string pyDetail = ver is null ? "未找到可用的 python" : $"Python {ver.Trim()}";
         log?.Invoke(pyOk ? $"{pyDetail} @ {python}" : pyDetail);
 
         // 2) torch + CUDA
@@ -78,6 +81,28 @@ public static class EnvironmentChecker
 
         return new EnvReport(pyOk, pyDetail, torchOk, cudaOk, whisperxOk, modelCached, modelDetail,
             gpuName, total, used, ffmpegOk);
+    }
+
+    /// <summary>EnvReport → 状态条逐项展示（纯函数）。缺项按项给修复提示；正常项 Hint 为空。</summary>
+    public static IReadOnlyList<EnvItem> BuildItems(EnvReport r)
+    {
+        string torchHint = !r.TorchOk
+            ? "pip install torch --index-url https://download.pytorch.org/whl/cu124"
+            : !r.CudaOk
+                ? "CUDA 不可用：更新 NVIDIA 显卡驱动（否则回退 CPU，速度很慢）"
+                : "";
+        return
+        [
+            new("Python", r.PythonOk,
+                r.PythonOk ? "" : "未找到可用的 python：检查设置中的 Python 路径（留空=自动探测 engine/.venv）"),
+            new("torch+CUDA", r.TorchOk && r.CudaOk, torchHint),
+            new("whisperx", r.WhisperXOk,
+                r.WhisperXOk ? "" : "pip install whisperx"),
+            new("模型缓存", r.ModelCached,
+                r.ModelCached ? "" : "首跑自动下载；国内可开镜像加速，或按 README 用 ModelScope 预下载"),
+            new("ffmpeg", r.FfmpegOk,
+                r.FfmpegOk ? "" : "安装 ffmpeg 并加入 PATH（winget install Gyan.FFmpeg）"),
+        ];
     }
 
     /// <summary>解析 nvidia-smi 一行输出："name, total_mb, used_mb"。</summary>
