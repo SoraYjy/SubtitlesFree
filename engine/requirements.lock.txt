@@ -54,6 +54,7 @@ narwhals==2.25.0
 networkx==3.6.1
 nltk==3.10.3
 numpy==2.4.6
+nvidia-cudnn-cu12==8.9.7.29
 omegaconf==2.3.1
 onnxruntime==1.29.0
 optuna==4.9.0

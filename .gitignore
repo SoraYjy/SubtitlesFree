@@ -8,6 +8,8 @@ dist/
 # Python 引擎虚拟环境与测试素材（体积大，自备）
 engine/.venv/
 engine/samples/
+# 本地模型权重（ASR ~1.6GB + 对齐 ~1.3GB，永不入库，见 SETUP.md）
+engine/models/
 # 一次性 spike 探针
 probe/
 # 开发过程草稿（superpowers plan/spec，含本机路径）
