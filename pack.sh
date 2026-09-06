@@ -10,10 +10,12 @@ rm -rf "$OUT"
 dotnet publish src/SubtitlesFree.App -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -o "$OUT"
 
-echo "[2/3] 复制 engine 脚本（不含 venv/samples/模型）..."
+echo "[2/3] 复制 engine 脚本（不含 venv/samples/模型）+ 内置 ffmpeg..."
 mkdir -p "$OUT/engine"
 cp engine/*.py "$OUT/engine/"
 cp engine/requirements*.txt "$OUT/engine/"
+# ffmpeg 随仓库分发（engine/ffmpeg.exe），放 exe 旁——引擎启动时由 GUI 前置到子进程 PATH
+cp engine/ffmpeg.exe "$OUT/ffmpeg.exe"
 
 echo "[3/3] 完成。"
 echo "产出：$OUT  （$(du -sh "$OUT" | cut -f1)）"

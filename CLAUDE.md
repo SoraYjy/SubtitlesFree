@@ -13,6 +13,7 @@ MP4 → SRT 字幕生成。WPF (.NET 8) GUI + Python/WhisperX 引擎（子进程
 ## 架构
 
 - `src/SubtitlesFree.Core`：协议解析（EngineProtocol）、设置（SettingsService）、子进程服务（EngineLauncher）、环境探测（EnvironmentChecker）。**纯逻辑全在这层，App 层不做逻辑**。
+- **ffmpeg 内置**：`engine/ffmpeg.exe`（50MB 二进制，**有意入库**，别加 gitignore）。引擎只认 PATH 上的裸名 ffmpeg，由 `EngineLauncher` 启动子进程时把内置所在目录前置到 PATH（`EnvironmentChecker.FindBundledFfmpeg`，发布布局 exe 旁 → 开发布局 engine/）。
 - `src/SubtitlesFree.App`（WPF）：Views + ViewModels + AppServices 组合根。
 - `engine/`：Python 引擎。stdout JSON Lines 事件（stage/progress/log/done/error）是 C#/Python 唯一契约；改动协议两端同步改。
 - 模型解析（**两端同语义，改动须同步**）：本地 `engine/models/<model>` 同名目录优先，仅 turbo 兼容遗留 `engine/models/asr`，否则 HF 在线下载（`EnvironmentChecker.LocalAsrCandidates` ↔ `pipeline._local_asr_dir`）。HF hub 缓存在 `%USERPROFILE%\.cache\huggingface\hub`；镜像 `HF_ENDPOINT=hf-mirror.com`；全被墙时按 README 用 ModelScope 预下载。

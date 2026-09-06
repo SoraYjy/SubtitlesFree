@@ -54,11 +54,7 @@ public static class EnvironmentChecker
         // 4) 模型缓存：本地 engine/models/<model>（turbo 另认遗留 engine/models/asr）或 HF hub 缓存，
         //    候选目录与 engine/pipeline.py 的 _local_asr_dir 同语义（同名目录优先，不跨模型顶替）
         string baseDir = AppContext.BaseDirectory;
-        string[] roots =
-        [
-            baseDir,                                                   // 发布布局（dist/SubtitlesFree/）
-            Path.Combine(baseDir, "..", "..", "..", "..", ".."),       // 开发仓库布局（上溯 5 级到仓库根）
-        ];
+        string[] roots = RepoRoots();
         string hubDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".cache", "huggingface", "hub", ModelRepoDir(selectedModel));
         bool modelCached = roots.SelectMany(r => LocalAsrCandidates(selectedModel, r)).Any(Directory.Exists)
@@ -66,9 +62,13 @@ public static class EnvironmentChecker
         string modelDetail = modelCached ? $"{selectedModel} 已缓存" : $"{selectedModel} 未缓存（首跑会下载）";
         log?.Invoke(modelDetail);
 
-        // 5) ffmpeg（whisperx.load_audio 硬依赖）
-        bool ffmpegOk = await RunCaptureAsync("ffmpeg", "-version", 10, log) is not null;
-        log?.Invoke(ffmpegOk ? "ffmpeg 已安装" : "ffmpeg 未安装（whisperx.load_audio 需要）");
+        // 5) ffmpeg（whisperx.load_audio 硬依赖）：内置优先（随仓库/发布包分发），否则探 PATH
+        string? bundledFfmpeg = FindBundledFfmpeg();
+        bool ffmpegOk = bundledFfmpeg is not null
+            || await RunCaptureAsync("ffmpeg", "-version", 10, log) is not null;
+        log?.Invoke(ffmpegOk
+            ? bundledFfmpeg is not null ? $"ffmpeg 内置：{bundledFfmpeg}" : "ffmpeg 已安装（系统 PATH）"
+            : "ffmpeg 未找到（内置与系统 PATH 均无）");
 
         // 6) GPU（nvidia-smi，无则跳过）
         string? gpuOut = await RunCaptureAsync("nvidia-smi",
@@ -102,7 +102,7 @@ public static class EnvironmentChecker
             new("模型缓存", r.ModelCached,
                 r.ModelCached ? "" : "首跑自动下载；国内可开镜像加速，或按 README 用 ModelScope 预下载"),
             new("ffmpeg", r.FfmpegOk,
-                r.FfmpegOk ? "" : "安装 ffmpeg 并加入 PATH（winget install Gyan.FFmpeg）"),
+                r.FfmpegOk ? "" : "ffmpeg.exe 缺失：从仓库 engine/ffmpeg.exe 恢复，或安装到 PATH（winget install Gyan.FFmpeg）"),
         ];
     }
 
@@ -133,6 +133,26 @@ public static class EnvironmentChecker
         yield return Path.Combine(modelsDir, model);
         if (model == "large-v3-turbo")
             yield return Path.Combine(modelsDir, "asr");
+    }
+
+    /// <summary>可能的「应用根」：发布布局（exe 旁）与开发仓库布局（上溯 5 级）。</summary>
+    public static string[] RepoRoots() =>
+    [
+        AppContext.BaseDirectory,
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."),
+    ];
+
+    /// <summary>内置 ffmpeg.exe 路径：发布布局 exe 旁 → 开发布局 engine/ 下；都没有返回 null（回退系统 PATH）。
+    /// ffmpeg 随仓库与发布包分发（engine/ffmpeg.exe），whisperx.load_audio 只认 PATH 上的裸名，
+    /// 故 EngineLauncher 启动引擎时把本目录前置到子进程 PATH。</summary>
+    public static string? FindBundledFfmpeg()
+    {
+        string[] candidates =
+        [
+            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "engine", "ffmpeg.exe"),
+        ];
+        return candidates.FirstOrDefault(File.Exists) is { } found ? Path.GetFullPath(found) : null;
     }
 
     /// <summary>跑命令取全部 stdout；失败/超时返回 null。超时杀进程。</summary>

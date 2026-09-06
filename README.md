@@ -23,7 +23,7 @@ MP4 视频高精度 SRT 字幕生成器（Windows）。WhisperX 架构：VAD 切
 - Windows 10/11 x64
 - **NVIDIA 显卡（显存 ≥ 8GB 推荐）** + 最新驱动
 - **Python 3.10+**（推荐 3.11）
-- **FFmpeg（硬依赖，须在 PATH 上）**：`winget install Gyan.FFmpeg`，或下载后把所在目录加入 PATH。提取音频直接调用 ffmpeg，未装时环境检测会标红
+- **FFmpeg**：**已内置**（仓库 `engine/ffmpeg.exe`，随源码与发布包分发），无需安装；若本机 PATH 上另有 ffmpeg 也互不影响（内置优先）
 - ~10GB 磁盘（torch + 模型）
 
 ## 快速开始
@@ -100,3 +100,5 @@ dotnet run --project src/SubtitlesFree.App      # debug 运行
 ## 协议
 
 [MIT](LICENSE)
+
+> ⚠️ 仓库内 `engine/ffmpeg.exe` 为 FFmpeg 项目的第三方二进制，版权归 FFmpeg 开发者，按其自身（L）GPL 许可分发，不随本项目 MIT 授权。

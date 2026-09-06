@@ -111,7 +111,7 @@ public class EnvironmentCheckerTests
         Assert.Contains("cu124", items[1].Hint);           // torch 缺 → pip cu124 命令
         Assert.Equal("pip install whisperx", items[2].Hint);
         Assert.Contains("ModelScope", items[3].Hint);      // 模型缺 → 预下载提示
-        Assert.Equal("安装 ffmpeg 并加入 PATH（winget install Gyan.FFmpeg）", items[4].Hint);
+        Assert.Equal("ffmpeg.exe 缺失：从仓库 engine/ffmpeg.exe 恢复，或安装到 PATH（winget install Gyan.FFmpeg）", items[4].Hint);
     }
 
     [Fact]
@@ -134,5 +134,15 @@ public class EnvironmentCheckerTests
         Assert.True(report.CudaOk);
         Assert.True(report.WhisperXOk);
         // GPU 型号 / ModelCached / ffmpeg 是否在 PATH 随机器与预下载状态而变，不做断言
+    }
+
+    [Fact]
+    public void FindBundledFfmpeg_DevLayout_FindsCommittedBinary()
+    {
+        // ffmpeg.exe 随仓库分发（engine/ffmpeg.exe），开发布局从测试 bin 上溯 5 级必命中
+        string? found = EnvironmentChecker.FindBundledFfmpeg();
+        Assert.NotNull(found);
+        Assert.Equal("ffmpeg.exe", Path.GetFileName(found));
+        Assert.Equal("engine", Path.GetFileName(Path.GetDirectoryName(found!)));
     }
 }

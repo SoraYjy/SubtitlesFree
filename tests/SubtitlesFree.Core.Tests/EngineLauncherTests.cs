@@ -91,4 +91,19 @@ public class EngineLauncherTests
                 cts.Token));
         // 进程被杀后 RunAsync 已返回（无残留等待）
     }
+
+    [SkippableFact]
+    public async Task RunAsync_InjectsBundledFfmpegIntoPath()
+    {
+        // 内置 ffmpeg 随仓库分发（engine/ffmpeg.exe）；本机 PATH 无 ffmpeg 时，
+        // 子进程解析到 ffmpeg 只能来自启动器的 PATH 注入
+        Assert.NotNull(EnvironmentChecker.FindBundledFfmpeg()); // 仓库内必命中（开发布局上溯）
+        var launcher = new EngineLauncher(FindPython(), FakeEngineWithArgs("--showpath"));
+        string? seen = null;
+        await launcher.RunAsync(new EngineRequest("v.mp4", "v.srt", "small", "float16", "zh", "", true),
+            CancellationToken.None, e => { if (e is LogEvent l) seen = l.Message; });
+        Assert.NotNull(seen);
+        Assert.StartsWith("FFMPEG=", seen);
+        Assert.NotEqual("FFMPEG=None", seen); // None = 注入失败；装了系统 ffmpeg 的机器此断言同样成立
+    }
 }

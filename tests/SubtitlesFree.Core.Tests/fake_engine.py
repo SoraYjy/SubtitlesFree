@@ -1,11 +1,13 @@
 """C# 测试用假引擎：发一串 JSON Lines 事件后退出。
 
-用法： python fake_engine.py [--error|--sleep]
-  默认    正常流：stage/progress/log/done + 一行垃圾（测 rawLog 容错）
-  --error 发 error(oom) 事件后退出码 1（测 error 事件不抛异常）
-  --sleep 睡 30s（测取消杀树）
+用法： python fake_engine.py [--error|--sleep|--showpath]
+  默认      正常流：stage/progress/log/done + 一行垃圾（测 rawLog 容错）
+  --error   发 error(oom) 事件后退出码 1（测 error 事件不抛异常）
+  --sleep   睡 30s（测取消杀树）
+  --showpath 打印子进程 PATH 上解析到的 ffmpeg 路径（测内置 ffmpeg PATH 注入）
 """
 import json
+import shutil
 import sys
 import time
 
@@ -18,6 +20,11 @@ if "--error" in args:
 
 if "--sleep" in args:
     time.sleep(30)
+
+if "--showpath" in args:
+    print(json.dumps({"type": "log", "level": "info",
+                      "message": f"FFMPEG={shutil.which('ffmpeg')}"}), flush=True)
+    sys.exit(0)
 
 print(json.dumps({"type": "stage", "value": "load_model"}), flush=True)
 print(json.dumps({"type": "progress", "value": 0.5}), flush=True)

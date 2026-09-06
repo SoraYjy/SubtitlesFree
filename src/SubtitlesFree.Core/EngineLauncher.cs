@@ -40,6 +40,13 @@ public sealed class EngineLauncher(string pythonPath, string engineScriptPath) :
         if (req.UseMirror)
             psi.EnvironmentVariables["HF_ENDPOINT"] = "https://hf-mirror.com";
         psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8"; // 双保险，emitter 侧已 reconfigure
+        // 内置 ffmpeg（engine/ffmpeg.exe 或 exe 旁）前置到子进程 PATH——引擎代码只认裸名 ffmpeg，零改动
+        string? ffmpegPath = EnvironmentChecker.FindBundledFfmpeg();
+        if (ffmpegPath is not null)
+        {
+            string dir = Path.GetDirectoryName(ffmpegPath)!;
+            psi.EnvironmentVariables["PATH"] = dir + Path.PathSeparator + psi.EnvironmentVariables["PATH"];
+        }
 
         using var process = new Process { StartInfo = psi };
         bool sawErrorEvent = false;
