@@ -19,6 +19,7 @@ from pathlib import Path
 import emitter
 from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
+from segmentation import segment_cues
 from srt import write_srt
 
 PROGRESS = {"load_model": 0.05, "vad": 0.10, "transcribe": 0.60,
@@ -189,6 +190,8 @@ def run_pipeline(args) -> None:
 
     emit_stage("write")
     out_path = args.output or str(Path(args.video).with_suffix(".srt"))
-    cues = match_en_to_cues(result["segments"], en_segments)
+    cue_src = segment_cues(result["segments"])  # 段落级 → 词级重切（可读短句）
+    emit_log(f"断句：{len(result['segments'])} 段 → {len(cue_src)} 条字幕")
+    cues = match_en_to_cues(cue_src, en_segments)
     write_srt(cues, out_path)
     emitter.emit_done(out_path, len(cues), video_sec, time.time() - t0)
