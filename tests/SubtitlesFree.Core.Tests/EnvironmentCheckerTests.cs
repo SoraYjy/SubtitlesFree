@@ -89,7 +89,9 @@ public class EnvironmentCheckerTests
     private static EnvReport MakeReport(
         bool py = true, bool torch = true, bool cuda = true, bool wx = true,
         bool model = true, bool ffmpeg = true) =>
-        new(py, "Python 3.11", torch, cuda, wx, model, "已缓存", "GPU", 12288, 100, ffmpeg);
+        new(py, "Python 3.11", torch, cuda, wx, model,
+            model ? "已缓存" : "未缓存：应放到 <engine/models 目录>（首跑自动下载；国内可开镜像或按 README 用 ModelScope 预下载）",
+            "GPU", 12288, 100, ffmpeg);
 
     [Fact]
     public void BuildItems_AllOk_FiveGreenItemsNoHints()
@@ -139,10 +141,34 @@ public class EnvironmentCheckerTests
     [Fact]
     public void FindBundledFfmpeg_DevLayout_FindsCommittedBinary()
     {
-        // ffmpeg.exe 随仓库分发（engine/ffmpeg.exe），开发布局从测试 bin 上溯 5 级必命中
+        // ffmpeg.exe 随仓库分发（engine/ffmpeg.exe），开发布局从测试 bin 上溯必命中
         string? found = EnvironmentChecker.FindBundledFfmpeg();
         Assert.NotNull(found);
         Assert.Equal("ffmpeg.exe", Path.GetFileName(found));
         Assert.Equal("engine", Path.GetFileName(Path.GetDirectoryName(found!)));
+    }
+
+    [Fact]
+    public void EngineRoots_DistInsideRepo_FindsRepoEngineRoot()
+    {
+        // dist-in-repo：dist/SubtitlesFree 自带 engine/（无模型），仓库根也有 engine/（有模型）
+        string tmp = Path.Combine(Path.GetTempPath(), "sf-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            string distApp = Path.Combine(tmp, "dist", "SubtitlesFree");
+            Directory.CreateDirectory(Path.Combine(distApp, "engine"));
+            Directory.CreateDirectory(Path.Combine(tmp, "engine", "models", "large-v3-turbo"));
+            var roots = EnvironmentChecker.EngineRoots(distApp).ToList();
+            Assert.Contains(distApp, roots);   // dist 自己的 engine/
+            Assert.Contains(tmp, roots);       // 仓库根的 engine/
+            bool cached = roots
+                .SelectMany(r => EnvironmentChecker.LocalAsrCandidates("large-v3-turbo", r))
+                .Any(Directory.Exists);
+            Assert.True(cached);               // dist-in-repo 也能发现仓库模型 → 不再误报红叉
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
     }
 }

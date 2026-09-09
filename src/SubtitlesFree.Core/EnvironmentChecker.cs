@@ -52,14 +52,18 @@ public static class EnvironmentChecker
         log?.Invoke(whisperxOk ? "whisperx 已安装" : "whisperx 未安装");
 
         // 4) 模型缓存：本地 engine/models/<model>（turbo 另认遗留 engine/models/asr）或 HF hub 缓存，
-        //    候选目录与 engine/pipeline.py 的 _local_asr_dir 同语义（同名目录优先，不跨模型顶替）
-        string baseDir = AppContext.BaseDirectory;
-        string[] roots = RepoRoots();
+        //    候选根逐级上溯（EngineRoots，兼容 dist-in-repo），与 engine/pipeline.py 的 _models_roots 同语义
+        string[] roots = EngineRoots(AppContext.BaseDirectory).ToArray();
         string hubDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".cache", "huggingface", "hub", ModelRepoDir(selectedModel));
         bool modelCached = roots.SelectMany(r => LocalAsrCandidates(selectedModel, r)).Any(Directory.Exists)
             || Directory.Exists(hubDir);
-        string modelDetail = modelCached ? $"{selectedModel} 已缓存" : $"{selectedModel} 未缓存（首跑会下载）";
+        string expectedDir = roots.Length > 0
+            ? Path.Combine(roots[0], "engine", "models", selectedModel)
+            : Path.Combine(AppContext.BaseDirectory, "engine", "models", selectedModel);
+        string modelDetail = modelCached
+            ? $"{selectedModel} 已缓存"
+            : $"未缓存：应放到 {expectedDir}（首跑自动下载；国内可开镜像或按 README 用 ModelScope 预下载）";
         log?.Invoke(modelDetail);
 
         // 5) ffmpeg（whisperx.load_audio 硬依赖）：内置优先（随仓库/发布包分发），否则探 PATH
@@ -100,7 +104,7 @@ public static class EnvironmentChecker
             new("whisperx", r.WhisperXOk,
                 r.WhisperXOk ? "" : "pip install whisperx"),
             new("模型缓存", r.ModelCached,
-                r.ModelCached ? "" : "首跑自动下载；国内可开镜像加速，或按 README 用 ModelScope 预下载"),
+                r.ModelCached ? "" : r.ModelDetail),
             new("ffmpeg", r.FfmpegOk,
                 r.FfmpegOk ? "" : "ffmpeg.exe 缺失：从仓库 engine/ffmpeg.exe 恢复，或安装到 PATH（winget install Gyan.FFmpeg）"),
         ];
@@ -135,24 +139,32 @@ public static class EnvironmentChecker
             yield return Path.Combine(modelsDir, "asr");
     }
 
-    /// <summary>可能的「应用根」：发布布局（exe 旁）与开发仓库布局（上溯 5 级）。</summary>
-    public static string[] RepoRoots() =>
-    [
-        AppContext.BaseDirectory,
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."),
-    ];
+    /// <summary>从 baseDir 逐级上溯，返回所有含 engine\ 子目录的「应用根」（含 baseDir 自身，近者优先）。
+    /// 与 engine/pipeline.py 的 _models_roots 同语义（改动须两端同步）：兼容 dist-in-repo
+    /// （dist/SubtitlesFree 里跑、模型在仓库 engine/models），真分发包仍只认自己旁边。</summary>
+    public static IEnumerable<string> EngineRoots(string baseDir)
+    {
+        string dir = Path.GetFullPath(baseDir);
+        for (int i = 0; i < 9; i++)
+        {
+            if (Directory.Exists(Path.Combine(dir, "engine")))
+                yield return dir;
+            string? parent = Path.GetDirectoryName(dir);
+            if (parent is null || parent == dir) yield break;
+            dir = parent;
+        }
+    }
 
-    /// <summary>内置 ffmpeg.exe 路径：发布布局 exe 旁 → 开发布局 engine/ 下；都没有返回 null（回退系统 PATH）。
+    /// <summary>内置 ffmpeg.exe 路径：发布布局 exe 旁 → 各应用根 engine/ 下；都没有返回 null（回退系统 PATH）。
     /// ffmpeg 随仓库与发布包分发（engine/ffmpeg.exe），whisperx.load_audio 只认 PATH 上的裸名，
     /// 故 EngineLauncher 启动引擎时把本目录前置到子进程 PATH。</summary>
     public static string? FindBundledFfmpeg()
     {
-        string[] candidates =
-        [
-            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "engine", "ffmpeg.exe"),
-        ];
-        return candidates.FirstOrDefault(File.Exists) is { } found ? Path.GetFullPath(found) : null;
+        string exeAdjacent = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        if (File.Exists(exeAdjacent)) return Path.GetFullPath(exeAdjacent);
+        return EngineRoots(AppContext.BaseDirectory)
+            .Select(r => Path.Combine(r, "engine", "ffmpeg.exe"))
+            .FirstOrDefault(File.Exists) is { } found ? Path.GetFullPath(found) : null;
     }
 
     /// <summary>跑命令取全部 stdout；失败/超时返回 null。超时杀进程。</summary>

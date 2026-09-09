@@ -3,9 +3,10 @@
 事件契约 spec §5.2；进度为阶段粒度尽力而为。
 技术路径为 SETUP.md 结论 PATH_A（whisperx 原生 VAD 管道）。
 
-模型解析：ASR 优先本文件同级 models/<model> 同名目录（turbo 兼容遗留
-models/asr），对齐用 models/align（离线可用，权重从 ModelScope 镜像预先下载，
-见 SETUP.md）；目录不存在则回退 --model 参数走 HuggingFace 在线下载（供有网
+模型解析：ASR 优先 models/<model> 同名目录（turbo 兼容遗留 models/asr），
+对齐用 models/align（离线可用，权重从 ModelScope 镜像预先下载，见 SETUP.md）；
+候选根逐级上溯（本文件同级 models → 各级应用根的 engine/models，兼容
+dist-in-repo），全不存在则回退 --model 参数走 HuggingFace 在线下载（供有网
 用户）。路径以 pipeline.py 自身位置解析，与 cwd 无关。
 """
 import os
@@ -26,10 +27,26 @@ PROGRESS = {"load_model": 0.05, "vad": 0.10, "transcribe": 0.60,
 _MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 
+def _models_roots() -> list[Path]:
+    """候选 models 根（近者优先）：本文件同级 models，再逐级上溯各「应用根」的 engine/models。
+
+    兼容 dist-in-repo：从 dist/SubtitlesFree/engine 里运行、模型在仓库 engine/models
+    时，固定单目录会漏掉仓库模型而误走被墙的 HF 在线下载；逐级上溯即可命中。
+    真正分发出去的包（拷到任意位置）仍只认自己旁边的目录，行为不变。
+    与 C# EnvironmentChecker.EngineRoots 同语义（改动须两端同步）。
+    """
+    roots = [_MODELS_DIR]
+    roots += [p / "engine" / "models" for p in list(_MODELS_DIR.parents)[:8]]
+    return roots
+
+
 def _local_model_dir(name: str) -> str | None:
     """本地模型目录存在则返回其绝对路径，否则 None（走 HF 在线下载）。"""
-    d = _MODELS_DIR / name
-    return str(d) if d.is_dir() else None
+    for root in _models_roots():
+        d = root / name
+        if d.is_dir():
+            return str(d)
+    return None
 
 
 def _local_asr_dir(model: str) -> str | None:
@@ -38,12 +55,13 @@ def _local_asr_dir(model: str) -> str | None:
     turbo 兼容 T5 遗留约定 models/asr；其余模型只认 models/{model} 同名目录，
     不存在则返回 None 走 HF 在线下载——否则「选 large-v3 实际跑 turbo」会让
     双语翻译（turbo 无 zh→en 翻译能力，T10 实测）静默失效。
+    所选模型先扫全部候选根，再扫 asr（不跨模型顶替的语义跨根保持）。
     """
     names = [model] + (["asr"] if model == "large-v3-turbo" else [])
     for name in names:
-        d = _MODELS_DIR / name
-        if d.is_dir():
-            return str(d)
+        d = _local_model_dir(name)
+        if d:
+            return d
     return None
 
 
