@@ -172,3 +172,31 @@ def test_end_pad_clamped_by_next_cue_and_padded_tail():
     assert len(cues) == 2              # 段边界必切；各自 4 字非碎片不合并
     assert cues[0]["end"] == 0.499     # 0.4+0.15=0.55 会被截到下一条起点前 1ms
     assert cues[1]["end"] == 1.05      # 末条无下一条，照常 +0.15
+
+
+# ---------- 可配参数（GUI --max-chars / --absorb-chars 透传） ----------
+
+def test_custom_max_chars_splits_earlier():
+    text = "甲乙丙丁戊己庚辛壬癸"  # 10 字 0 间隙
+    atoms = [w(c, i * 0.1, i * 0.1 + 0.1) for i, c in enumerate(text)]
+    cues = segment_cues([seg(text, 0, 1, atoms)], max_chars=6, absorb_chars=0)
+    assert [len(c["text"]) for c in cues] == [6, 4]  # 6 字上限提前切；吸收关闭
+
+
+def test_absorb_zero_leaves_tail_alone():
+    text = "甲乙丙丁戊己庚辛壬"  # 9 字 0 间隙：默认吸收剩 1 字；absorb=0 则切 8/1
+    atoms = [w(c, i * 0.1, i * 0.1 + 0.1) for i, c in enumerate(text)]
+    default = segment_cues([seg(text, 0, 0.9, atoms)])
+    assert [len(c["text"]) for c in default] == [9]           # 默认吸收成 1 条
+    off = segment_cues([seg(text, 0, 0.9, atoms)], max_chars=8, absorb_chars=0)
+    assert [len(c["text"]) for c in off] == [8, 1]            # 关闭吸收留孤字尾
+
+
+def test_out_of_range_params_clamped():
+    text = "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥"  # 22 字
+    atoms = [w(c, i * 0.1, i * 0.1 + 0.1) for i, c in enumerate(text)]
+    tiny = segment_cues([seg(text, 0, 2.2, atoms)], max_chars=1, absorb_chars=99)
+    huge = segment_cues([seg(text, 0, 2.2, atoms)], max_chars=999, absorb_chars=99)
+    # max_chars 钳到 6；absorb 钳到 min(10, 6//3=2)，不级联吸收
+    assert [len(c["text"]) for c in tiny] == [6, 6, 6, 4]
+    assert len(huge) == 1 and len(huge[0]["text"]) == 22  # max_chars 钳到 40，整条放下

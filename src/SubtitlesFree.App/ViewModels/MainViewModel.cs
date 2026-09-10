@@ -47,6 +47,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _hotwords = "";
     [ObservableProperty] private bool _useMirror = true;
     [ObservableProperty] private string _pythonPath = "";
+    [ObservableProperty] private int _maxChars = 18;
+    [ObservableProperty] private int _absorbChars = 4;
 
     /// <summary>large-v3-turbo 不支持翻译引擎，双语模式下英文行将是中文回写（内联警告，不禁止选择）。</summary>
     [ObservableProperty] private bool _bilingualTurboWarning;
@@ -67,6 +69,8 @@ public partial class MainViewModel : ObservableObject
         Hotwords = _svc.Settings.Hotwords;
         UseMirror = _svc.Settings.UseMirror;
         PythonPath = _svc.Settings.PythonPath;
+        MaxChars = _svc.Settings.MaxChars;
+        AbsorbChars = _svc.Settings.AbsorbChars;
         BuildSteps();
         UpdateBilingualTurboWarning();
         _ = CheckEnv();
@@ -93,6 +97,8 @@ public partial class MainViewModel : ObservableObject
     partial void OnHotwordsChanged(string value) { _svc.Settings.Hotwords = value; _svc.SaveSettings(); }
     partial void OnUseMirrorChanged(bool value) { _svc.Settings.UseMirror = value; _svc.SaveSettings(); }
     partial void OnPythonPathChanged(string value) { _svc.Settings.PythonPath = value; _svc.SaveSettings(); }
+    partial void OnMaxCharsChanged(int value) { _svc.Settings.MaxChars = value; _svc.SaveSettings(); }
+    partial void OnAbsorbCharsChanged(int value) { _svc.Settings.AbsorbChars = value; _svc.SaveSettings(); }
 
     private void UpdateBilingualTurboWarning()
         => BilingualTurboWarning = Model == "large-v3-turbo" && LanguageMode == "bilingual";
@@ -134,7 +140,8 @@ public partial class MainViewModel : ObservableObject
             .Select(w => w.Trim()).Where(w => w.Length > 0));
         var req = new EngineRequest(
             VideoPath, Path.ChangeExtension(VideoPath, ".srt"),
-            Model, ComputeType, LanguageMode, hotwordsFlat, UseMirror);
+            Model, ComputeType, LanguageMode, hotwordsFlat, UseMirror,
+            Math.Clamp(MaxChars, 6, 40), Math.Clamp(AbsorbChars, 0, 10));
 
         ResetRun();
         _cts = new CancellationTokenSource();

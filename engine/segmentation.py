@@ -50,12 +50,21 @@ class _Atom:
     break_after: str | None = None   # 文本标点断句："sentence" / "comma"
 
 
-def segment_cues(segments: list[dict]) -> list[dict]:
-    """segments（align 后，含 words）→ 短句 cue 列表 [{"start","end","text"}]。"""
+def segment_cues(segments: list[dict], max_chars: int = MAX_CHARS,
+                absorb_chars: int = ABSORB_CHARS) -> list[dict]:
+    """segments（align 后，含 words）→ 短句 cue 列表 [{"start","end","text"}]。
+
+    max_chars：单条字数上限（不含空格），GUI 可配（--max-chars 透传），钳到 [6, 40]；
+    absorb_chars：断句后剩余 ≤ 此字数并入前一条避免孤字尾（0=关闭），钳到 [0, 10]。
+    其余阈值（停顿 gap、时长上限等）为算法内部常量，按人工字幕对照校准，不对外暴露。
+    """
+    max_chars = min(max(6, max_chars), 40)  # 与 C# 侧 Math.Clamp(6, 40) 同区间
+    # 吸收量另受上限 1/3 约束：吸收阈值 ≥ 字数上限会级联吸收整段，上限形同虚设
+    absorb_chars = min(max(0, absorb_chars), 10, max_chars // 3)
     groups: list[list[_Atom]] = []
     for phrase in _phrases(segments):
-        groups.extend(_phrase_to_cues(phrase))
-    groups = _merge_fragments(groups)
+        groups.extend(_phrase_to_cues(phrase, max_chars, absorb_chars))
+    groups = _merge_fragments(groups, max_chars, absorb_chars)
     return _format(groups)
 
 
@@ -184,7 +193,8 @@ def _best_cut(run: list[_Atom]) -> int | None:
     return best_i
 
 
-def _phrase_to_cues(atoms: list[_Atom]) -> list[list[_Atom]]:
+def _phrase_to_cues(atoms: list[_Atom], max_chars: int,
+                    absorb_chars: int) -> list[list[_Atom]]:
     """单个短语 → 若干 cue 原子组。超限时优先在最大软间隙处回退切。"""
     cues: list[list[_Atom]] = []
     run = [atoms[0]]
@@ -192,15 +202,15 @@ def _phrase_to_cues(atoms: list[_Atom]) -> list[list[_Atom]]:
     while k < len(atoms):
         nxt = atoms[k]
         rest = atoms[k:]
-        over_chars = _chars(run) + len(nxt.text) > MAX_CHARS
+        over_chars = _chars(run) + len(nxt.text) > max_chars
         over_dur = nxt.end - run[0].start > MAX_DUR
         if not (over_chars or over_dur):
             run.append(nxt)
         elif not _splittable(run[-1], nxt):
             run.append(nxt)  # 数字/字母串不拆开，宁可本条超限 1~3 字
-        elif (_chars(rest) <= ABSORB_CHARS
+        elif (_chars(rest) <= absorb_chars
               and rest[-1].end - run[0].start <= MAX_DUR + DUR_SLACK):
-            run.append(nxt)  # 尾部 ≤3 字且时长可控 → 吸收，避免孤字尾
+            run.append(nxt)  # 尾部少量字且时长可控 → 吸收，避免孤字尾
         else:
             cut = _best_cut(run)
             if cut is not None:
@@ -215,11 +225,13 @@ def _phrase_to_cues(atoms: list[_Atom]) -> list[list[_Atom]]:
     return cues
 
 
-def _merge_fragments(groups: list[list[_Atom]]) -> list[list[_Atom]]:
+def _merge_fragments(groups: list[list[_Atom]], max_chars: int,
+                     absorb_chars: int) -> list[list[_Atom]]:
     """碎片合并：相邻两条任一不足 MIN_CHARS 字，且无硬停顿、装得下 → 并为一条。"""
     out: list[list[_Atom]] = []
     for g in groups:
-        if out and (_is_fragment(out[-1]) or _is_fragment(g)) and _mergeable(out[-1], g):
+        if out and (_is_fragment(out[-1]) or _is_fragment(g)) \
+                and _mergeable(out[-1], g, max_chars, absorb_chars):
             _join(out[-1], g)
         else:
             out.append(g)
@@ -230,10 +242,10 @@ def _is_fragment(g: list[_Atom]) -> bool:
     return _chars(g) < MIN_CHARS
 
 
-def _mergeable(a: list[_Atom], b: list[_Atom]) -> bool:
+def _mergeable(a: list[_Atom], b: list[_Atom], max_chars: int, absorb_chars: int) -> bool:
     gap = b[0].start - a[-1].end
     return (gap < HARD_GAP
-            and _chars(a) + _chars(b) <= MAX_CHARS + ABSORB_CHARS
+            and _chars(a) + _chars(b) <= max_chars + absorb_chars
             and b[-1].end - a[0].start <= MAX_DUR + DUR_SLACK)
 
 

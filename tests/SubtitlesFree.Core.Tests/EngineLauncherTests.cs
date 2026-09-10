@@ -44,6 +44,8 @@ public class EngineLauncherTests
         Assert.Contains("--compute-type int8_float16", args);
         Assert.Contains("--bilingual", args);
         Assert.Contains("--hotwords \"ComfyUI,SDXL\"", args);
+        Assert.Contains("--max-chars 18", args);
+        Assert.Contains("--absorb-chars 4", args);
         Assert.DoesNotContain("--language", args); // 默认 zh 不用传
     }
 

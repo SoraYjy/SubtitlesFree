@@ -5,7 +5,8 @@ namespace SubtitlesFree.Core;
 
 public sealed record EngineRequest(
     string VideoPath, string OutputPath, string Model, string ComputeType,
-    string LanguageMode, string Hotwords, bool UseMirror);
+    string LanguageMode, string Hotwords, bool UseMirror,
+    int MaxChars = 18, int AbsorbChars = 4);
 
 /// <summary>引擎非零退出且未发 error 事件（取消除外）。</summary>
 public sealed class EngineFailedException(string details) : Exception(details);
@@ -105,6 +106,8 @@ public sealed class EngineLauncher(string pythonPath, string engineScriptPath) :
         string hotwords = req.Hotwords.Replace("\"", "").Trim();
         if (hotwords.Length > 0)
             sb.Append($" --hotwords \"{hotwords}\"");
+        sb.Append($" --max-chars {Math.Clamp(req.MaxChars, 6, 40)}");
+        sb.Append($" --absorb-chars {Math.Clamp(req.AbsorbChars, 0, 10)}");
         return (pythonExe, sb.ToString());
     }
 }

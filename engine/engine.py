@@ -22,6 +22,10 @@ def parse_args(argv=None):
     p.add_argument("--compute-type", default="float16",
                    choices=["float16", "int8_float16", "int8"])
     p.add_argument("--hotwords", default="", help="专有名词表，逗号分隔")
+    p.add_argument("--max-chars", type=int, default=18,
+                   help="字幕单条字数上限（不含空格），超出时在标点/停顿处断开")
+    p.add_argument("--absorb-chars", type=int, default=4,
+                   help="断句后剩余不超过此字数时并入前一条，避免孤字尾；0=关闭")
     p.add_argument("--selftest", action="store_true", help="环境自检后退出")
     return p.parse_args(argv)
 

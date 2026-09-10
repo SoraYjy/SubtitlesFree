@@ -20,5 +20,11 @@ public sealed class AppSettings
     /// <summary>模型下载走 hf-mirror.com（国内加速）。</summary>
     public bool UseMirror { get; set; } = true;
 
+    /// <summary>字幕单条字数上限（不含空格）。超出时在标点/停顿处断开。默认 18（B站单行安全宽度）。</summary>
+    public int MaxChars { get; set; } = 18;
+
+    /// <summary>断句后剩余不超过此字数时并入前一条，避免孤字尾。默认 4；0 = 关闭。</summary>
+    public int AbsorbChars { get; set; } = 4;
+
     public string LastInputDir { get; set; } = "";
 }

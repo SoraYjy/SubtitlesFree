@@ -190,7 +190,8 @@ def run_pipeline(args) -> None:
 
     emit_stage("write")
     out_path = args.output or str(Path(args.video).with_suffix(".srt"))
-    cue_src = segment_cues(result["segments"])  # 段落级 → 词级重切（可读短句）
+    cue_src = segment_cues(result["segments"],
+                           max_chars=args.max_chars, absorb_chars=args.absorb_chars)
     emit_log(f"断句：{len(result['segments'])} 段 → {len(cue_src)} 条字幕")
     cues = match_en_to_cues(cue_src, en_segments)
     write_srt(cues, out_path)
