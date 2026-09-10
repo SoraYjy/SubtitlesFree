@@ -109,6 +109,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Label Grid.Row="0" Grid.Column="0" Content="模型："/>
@@ -128,20 +129,33 @@
                 <CheckBox Grid.Row="1" Grid.Column="3" Content="hf-mirror.com 国内加速"
                           IsChecked="{Binding UseMirror}" VerticalAlignment="Center"/>
 
-                <Label Grid.Row="2" Grid.Column="0" Content="热词："/>
-                <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Height="60"
-                         Text="{Binding Hotwords, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="Wrap"
-                         ToolTip="专有名词，逗号或换行分隔，纠正同音错字" Margin="0,2,0,2"/>
+                <!-- 热词组：下拉选组（末位「（不使用热词）」）+ 增删；编辑框绑定当前组，改动即存 -->
+                <Label Grid.Row="2" Grid.Column="0" Content="热词组："/>
+                <DockPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,2,0,2">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="＋新增组" Command="{Binding AddHotwordSetCommand}" Padding="10,2" Margin="6,0,0,0"
+                                ToolTip="新建一份热词组（按领域命名），建完直接编辑内容"/>
+                        <Button Content="删除" Command="{Binding DeleteHotwordSetCommand}" Padding="10,2" Margin="6,0,0,0"
+                                ToolTip="删除当前选中的热词组（有确认提示）"/>
+                    </StackPanel>
+                    <ComboBox ItemsSource="{Binding HotwordSetItems}"
+                              SelectedItem="{Binding SelectedHotwordSet}" DisplayMemberPath="Name"
+                              ToolTip="按领域维护多份热词，生成时用选中组的词纠正专有名词"/>
+                </DockPanel>
+                <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Height="60"
+                         Text="{Binding HotwordsText, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="Wrap" Margin="0,0,0,2"
+                         IsEnabled="{Binding HasActiveHotwordSet}"
+                         ToolTip="当前组的专有名词，逗号或换行分隔，纠正同音错字；改动自动保存到该组"/>
 
-                <Label Grid.Row="3" Grid.Column="0" Content="Python："/>
-                <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+                <Label Grid.Row="4" Grid.Column="0" Content="Python："/>
+                <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
                          Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="留空=自动探测（应用旁 engine/.venv 优先）" Margin="0,2,0,2"/>
 
                 <!-- 断句参数：MAX_CHARS / ABSORB_CHARS，透传引擎 segmentation.py -->
-                <Label Grid.Row="4" Grid.Column="0" Content="断句："/>
-                <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,2,0,2">
+                <Label Grid.Row="5" Grid.Column="0" Content="断句："/>
+                <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,2,0,2">
                     <TextBlock Text="单条最多字数" VerticalAlignment="Center"/>
                     <TextBox Width="44" Margin="4,0,16,0"
                              Text="{Binding MaxChars, UpdateSourceTrigger=PropertyChanged}"
@@ -151,12 +165,12 @@
                              Text="{Binding AbsorbChars, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="断句后剩余不超过此字数时并入前一条，避免出现孤字尾（如「…完/事」）。&#10;默认 4；0 = 关闭并入。与「单条最多字数」相加即实际字数硬顶。"/>
                 </StackPanel>
-                <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Foreground="Gray" FontSize="12"
+                <TextBlock Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Foreground="Gray" FontSize="12"
                            Text="单条最多字数：每条字幕的字数上限，超出时在标点/停顿处断开（默认 18）；尾部并入字数：断句后剩余不超过该字数时并入前一条，避免孤字尾（默认 4）"
                            TextWrapping="Wrap" Margin="0,0,0,2"/>
 
                 <!-- F3：large-v3-turbo 无翻译引擎，双语时英文行为中文回写（只警告不禁选） -->
-                <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4"
+                <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
                            Text="⚠ large-v3-turbo 不支持中→英翻译，英文行将为中文回写；双语请切 large-v3"
                            Foreground="#C62828" TextWrapping="Wrap" Margin="0,4,0,0">
                     <TextBlock.Style>

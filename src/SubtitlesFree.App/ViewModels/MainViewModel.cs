@@ -44,11 +44,19 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _model = "large-v3-turbo";
     [ObservableProperty] private string _languageMode = "zh";
     [ObservableProperty] private string _computeType = "float16";
-    [ObservableProperty] private string _hotwords = "";
     [ObservableProperty] private bool _useMirror = true;
     [ObservableProperty] private string _pythonPath = "";
     [ObservableProperty] private int _maxChars = 18;
     [ObservableProperty] private int _absorbChars = 4;
+
+    // ---- 热词组（下拉 = 各组 + 「不使用」哨兵；编辑框绑定当前组）
+    private const string NoneHotwordLabel = "（不使用热词）";
+    private readonly HotwordSet _noneHotwordSet = new() { Name = NoneHotwordLabel };
+    public ObservableCollection<HotwordSet> HotwordSetItems { get; } = new();
+    [ObservableProperty] private HotwordSet? _selectedHotwordSet;
+    [ObservableProperty] private string _hotwordsText = "";
+    /// <summary>当前是否选中了真实热词组（「不使用」时编辑框禁用）。</summary>
+    [ObservableProperty] private bool _hasActiveHotwordSet;
 
     /// <summary>large-v3-turbo 不支持翻译引擎，双语模式下英文行将是中文回写（内联警告，不禁止选择）。</summary>
     [ObservableProperty] private bool _bilingualTurboWarning;
@@ -66,11 +74,14 @@ public partial class MainViewModel : ObservableObject
         Model = _svc.Settings.Model;
         LanguageMode = _svc.Settings.LanguageMode;
         ComputeType = _svc.Settings.ComputeType;
-        Hotwords = _svc.Settings.Hotwords;
         UseMirror = _svc.Settings.UseMirror;
         PythonPath = _svc.Settings.PythonPath;
         MaxChars = _svc.Settings.MaxChars;
         AbsorbChars = _svc.Settings.AbsorbChars;
+        foreach (HotwordSet h in _svc.Settings.HotwordSets) HotwordSetItems.Add(h);
+        HotwordSetItems.Add(_noneHotwordSet);
+        SelectedHotwordSet = _svc.Settings.HotwordSets
+            .FirstOrDefault(h => h.Name == _svc.Settings.ActiveHotwordSet) ?? _noneHotwordSet;
         BuildSteps();
         UpdateBilingualTurboWarning();
         _ = CheckEnv();
@@ -94,11 +105,59 @@ public partial class MainViewModel : ObservableObject
         UpdateBilingualTurboWarning();
     }
     partial void OnComputeTypeChanged(string value) { _svc.Settings.ComputeType = value; _svc.SaveSettings(); }
-    partial void OnHotwordsChanged(string value) { _svc.Settings.Hotwords = value; _svc.SaveSettings(); }
     partial void OnUseMirrorChanged(bool value) { _svc.Settings.UseMirror = value; _svc.SaveSettings(); }
     partial void OnPythonPathChanged(string value) { _svc.Settings.PythonPath = value; _svc.SaveSettings(); }
     partial void OnMaxCharsChanged(int value) { _svc.Settings.MaxChars = value; _svc.SaveSettings(); }
     partial void OnAbsorbCharsChanged(int value) { _svc.Settings.AbsorbChars = value; _svc.SaveSettings(); }
+
+    partial void OnSelectedHotwordSetChanged(HotwordSet? value)
+    {
+        bool none = value is null || ReferenceEquals(value, _noneHotwordSet);
+        HasActiveHotwordSet = !none;
+        HotwordsText = none ? "" : value!.Words;
+        _svc.Settings.ActiveHotwordSet = none ? "" : value!.Name;
+        _svc.SaveSettings();
+    }
+
+    partial void OnHotwordsTextChanged(string value)
+    {
+        // 编辑框改动写回当前组（选「不使用」时不写）；文本由切组刷新引起的相同值不重复保存
+        if (SelectedHotwordSet is { } sel && !ReferenceEquals(sel, _noneHotwordSet) && sel.Words != value)
+        {
+            sel.Words = value;
+            _svc.SaveSettings();
+        }
+    }
+
+    [RelayCommand]
+    private void AddHotwordSet()
+    {
+        var dlg = new Views.InputBoxWindow("新增热词组", "组名（按领域起，如：三角洲行动、电脑装机）");
+        if (dlg.ShowDialog() != true) return;
+        string name = dlg.InputValue;
+        if (name.Length == 0 || name == NoneHotwordLabel
+            || _svc.Settings.HotwordSets.Any(h => h.Name == name))
+        {
+            MessageBox.Show("组名不能为空、不能与已有组重复。", "新增热词组");
+            return;
+        }
+        var set = new HotwordSet { Name = name };
+        _svc.Settings.HotwordSets.Add(set);
+        HotwordSetItems.Insert(HotwordSetItems.Count - 1, set); // 哨兵恒在末位
+        SelectedHotwordSet = set; // 触发持久化
+    }
+
+    [RelayCommand]
+    private void DeleteHotwordSet()
+    {
+        if (SelectedHotwordSet is not { } sel || ReferenceEquals(sel, _noneHotwordSet)) return;
+        if (MessageBox.Show($"删除热词组「{sel.Name}」？（不影响其他组）", "确认删除",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        _svc.Settings.HotwordSets.Remove(sel);
+        HotwordSetItems.Remove(sel);
+        SelectedHotwordSet = _noneHotwordSet; // 删的是当前组 → 切回「不使用」并持久化
+    }
 
     private void UpdateBilingualTurboWarning()
         => BilingualTurboWarning = Model == "large-v3-turbo" && LanguageMode == "bilingual";
@@ -135,9 +194,7 @@ public partial class MainViewModel : ObservableObject
             StatusText = "环境未就绪：点「检测环境」按提示修复";
             return;
         }
-        string hotwordsFlat = string.Join(",", Hotwords
-            .Split([",", "\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => w.Trim()).Where(w => w.Length > 0));
+        string hotwordsFlat = HotwordLibrary.ActiveWords(_svc.Settings);
         var req = new EngineRequest(
             VideoPath, Path.ChangeExtension(VideoPath, ".srt"),
             Model, ComputeType, LanguageMode, hotwordsFlat, UseMirror,

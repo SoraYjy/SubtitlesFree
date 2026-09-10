@@ -1,5 +1,13 @@
 namespace SubtitlesFree.Core;
 
+/// <summary>一份热词组：组名 + 专有名词（逗号/换行分隔）。按领域各建一份，生成时选其一。</summary>
+public sealed class HotwordSet
+{
+    public string Name { get; set; } = "";
+
+    public string Words { get; set; } = "";
+}
+
 /// <summary>用户设置（%AppData%\SubtitlesFree\settings.json）。</summary>
 public sealed class AppSettings
 {
@@ -16,6 +24,12 @@ public sealed class AppSettings
 
     /// <summary>专有名词热词，逗号/换行分隔。</summary>
     public string Hotwords { get; set; } = "";
+
+    /// <summary>热词组列表（按领域一份一份）。旧 Hotwords 单串由 EnsureMigrated 迁成「默认」组。</summary>
+    public List<HotwordSet> HotwordSets { get; set; } = [];
+
+    /// <summary>当前使用的组名；空 = 不使用热词。</summary>
+    public string ActiveHotwordSet { get; set; } = "";
 
     /// <summary>模型下载走 hf-mirror.com（国内加速）。</summary>
     public bool UseMirror { get; set; } = true;

@@ -17,7 +17,9 @@ public static class SettingsService
         try
         {
             if (!File.Exists(path)) return new AppSettings();
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
+            HotwordLibrary.EnsureMigrated(settings); // 旧单串热词 → 「默认」组（一次性）
+            return settings;
         }
         catch
         {
