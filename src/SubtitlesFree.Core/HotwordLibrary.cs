@@ -13,15 +13,16 @@ public static class HotwordLibrary
     }
 
     /// <summary>当前组词表拍平成逗号串（供引擎 --hotwords）；未选/组不存在 → 空串。
-    /// 全角逗号/顿号先归一（旧链路靠引擎侧归一，本函数现在是唯一出口）。</summary>
+    /// 分隔符：空格/Tab/换行/逗号均可（全角空格、全角逗号、顿号先归一）。</summary>
     public static string ActiveWords(AppSettings s)
     {
         HotwordSet? set = s.HotwordSets.FirstOrDefault(h => h.Name == s.ActiveHotwordSet);
         if (set is null)
             return "";
-        return string.Join(",", set.Words
-            .Replace("，", ",").Replace("、", ",")
-            .Split([",", "\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+        string t = set.Words
+            .Replace("，", ",").Replace("、", ",").Replace('　', ' ');
+        return string.Join(",", t
+            .Split([',', ' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(w => w.Trim())
             .Where(w => w.Length > 0));
     }

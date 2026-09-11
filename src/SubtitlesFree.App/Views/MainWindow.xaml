@@ -146,7 +146,7 @@
                          Text="{Binding HotwordsText, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True" TextWrapping="Wrap" Margin="0,0,0,2"
                          IsEnabled="{Binding HasActiveHotwordSet}"
-                         ToolTip="当前组的专有名词，逗号或换行分隔，纠正同音错字；改动自动保存到该组"/>
+                         ToolTip="当前组的专有名词，空格、逗号或换行分隔均可，纠正同音错字；改动自动保存到该组"/>
 
                 <Label Grid.Row="4" Grid.Column="0" Content="Python："/>
                 <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"

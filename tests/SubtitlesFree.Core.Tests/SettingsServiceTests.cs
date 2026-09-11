@@ -99,6 +99,14 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void ActiveWords_SpaceSeparatedAlsoWorks()
+    {
+        var s = new AppSettings { ActiveHotwordSet = "三角洲" };
+        s.HotwordSets.Add(new HotwordSet { Name = "三角洲", Words = "修脚弹 ST弹　腰射\t开镜" }); // 空格/全角空格/Tab
+        Assert.Equal("修脚弹,ST弹,腰射,开镜", HotwordLibrary.ActiveWords(s));
+    }
+
+    [Fact]
     public void Load_MissingFile_ReturnsDefaults()
         => Assert.Equivalent(new AppSettings(), SettingsService.Load(TempPath()));
 
