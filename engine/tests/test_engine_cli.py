@@ -1,10 +1,20 @@
-"""engine.py --selftest 子进程冒烟：JSON Lines 可解析、退出码 0。"""
+"""engine.py CLI：--selftest 子进程冒烟 + parse_args 参数解析。"""
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+from engine import parse_args
+
 ENGINE = Path(__file__).resolve().parent.parent / "engine.py"
+
+
+def test_parse_args_format_defaults_srt():
+    assert parse_args(["--video", "x.mp4"]).format == "srt"
+
+
+def test_parse_args_format_txt():
+    assert parse_args(["--video", "x.mp4", "--format", "txt"]).format == "txt"
 
 
 def test_selftest_emits_valid_json_lines():

@@ -6,7 +6,7 @@ namespace SubtitlesFree.Core;
 public sealed record EngineRequest(
     string VideoPath, string OutputPath, string Model, string ComputeType,
     string LanguageMode, string Hotwords, bool UseMirror,
-    int MaxChars = 18, int AbsorbChars = 4);
+    int MaxChars = 18, int AbsorbChars = 4, string Format = "srt");
 
 /// <summary>引擎非零退出且未发 error 事件（取消除外）。</summary>
 public sealed class EngineFailedException(string details) : Exception(details);
@@ -101,13 +101,15 @@ public sealed class EngineLauncher(string pythonPath, string engineScriptPath) :
         sb.Append($" --output \"{req.OutputPath}\"");
         sb.Append($" --model {req.Model}");
         sb.Append($" --compute-type {req.ComputeType}");
-        if (req.LanguageMode == "bilingual")
+        // txt 转写按块检测语言（引擎忽略双语），不下发 --bilingual
+        if (req.LanguageMode == "bilingual" && req.Format != "txt")
             sb.Append(" --bilingual");
         string hotwords = req.Hotwords.Replace("\"", "").Trim();
         if (hotwords.Length > 0)
             sb.Append($" --hotwords \"{hotwords}\"");
         sb.Append($" --max-chars {Math.Clamp(req.MaxChars, 6, 40)}");
         sb.Append($" --absorb-chars {Math.Clamp(req.AbsorbChars, 0, 10)}");
+        sb.Append($" --format {req.Format}");
         return (pythonExe, sb.ToString());
     }
 }

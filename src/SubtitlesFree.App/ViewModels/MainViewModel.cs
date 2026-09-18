@@ -28,6 +28,7 @@ public partial class MainViewModel : ObservableObject
     private EnvReport? _env;
 
     // ---- 运行状态
+    private string _runFormat = "srt"; // 步骤条按最近一次运行格式构建（txt 无对齐/翻译/断句步）
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _canGenerate = true;
     [ObservableProperty] private double _progress;
@@ -90,9 +91,11 @@ public partial class MainViewModel : ObservableObject
     private void BuildSteps()
     {
         Steps.Clear();
-        string[] titles = LanguageMode == "bilingual"
-            ? ["加载模型", "VAD 切分", "语音识别", "音素对齐", "英文翻译", "写入 SRT"]
-            : ["加载模型", "VAD 切分", "语音识别", "音素对齐", "写入 SRT"];
+        string[] titles = _runFormat == "txt"
+            ? ["加载模型", "VAD 分块", "语音识别", "写入 TXT"]
+            : LanguageMode == "bilingual"
+                ? ["加载模型", "VAD 切分", "语音识别", "音素对齐", "英文翻译", "写入 SRT"]
+                : ["加载模型", "VAD 切分", "语音识别", "音素对齐", "写入 SRT"];
         foreach (string t in titles) Steps.Add(new StepItem(t));
     }
 
@@ -186,7 +189,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task Generate()
+    private Task Generate() => RunEngineAsync("srt");
+
+    [RelayCommand]
+    private Task Transcribe() => RunEngineAsync("txt");
+
+    /// <summary>生成字幕 / 转写文本共用主体：format 决定输出扩展名、请求格式与步骤条。</summary>
+    private async Task RunEngineAsync(string format)
     {
         if (IsRunning || !File.Exists(VideoPath)) return;
         if (_env is { AllOk: false })
@@ -194,16 +203,19 @@ public partial class MainViewModel : ObservableObject
             StatusText = "环境未就绪：点「检测环境」按提示修复";
             return;
         }
+        string ext = format == "txt" ? ".txt" : ".srt";
         string hotwordsFlat = HotwordLibrary.ActiveWords(_svc.Settings);
         var req = new EngineRequest(
-            VideoPath, Path.ChangeExtension(VideoPath, ".srt"),
+            VideoPath, Path.ChangeExtension(VideoPath, ext),
             Model, ComputeType, LanguageMode, hotwordsFlat, UseMirror,
-            Math.Clamp(MaxChars, 6, 40), Math.Clamp(AbsorbChars, 0, 10));
+            Math.Clamp(MaxChars, 6, 40), Math.Clamp(AbsorbChars, 0, 10), format);
 
+        _runFormat = format;
+        BuildSteps();
         ResetRun();
         _cts = new CancellationTokenSource();
         var launcher = new EngineLauncher(_svc.ResolvePython(), _svc.EngineScriptPath);
-        if (BilingualTurboWarning)
+        if (BilingualTurboWarning && format != "txt")
             AppendLog("large-v3-turbo 不支持中→英翻译，英文行将为中文回写；双语请切 large-v3", "WARN");
         try
         {
@@ -263,7 +275,9 @@ public partial class MainViewModel : ObservableObject
                     SrtPath = d.SrtPath;
                     Progress = 1;
                     foreach (var s in Steps) s.State = StepState.Done;
-                    StatusText = $"完成：{d.Segments} 条字幕 · 用时 {d.ElapsedSec:F0}s（视频 {d.VideoSec:F0}s）";
+                    StatusText = _runFormat == "txt"
+                        ? $"完成：{d.Segments} 段文本 · 用时 {d.ElapsedSec:F0}s（视频 {d.VideoSec:F0}s）"
+                        : $"完成：{d.Segments} 条字幕 · 用时 {d.ElapsedSec:F0}s（视频 {d.VideoSec:F0}s）";
                     LoadPreview();
                     break;
                 case ErrorEvent e:
@@ -294,6 +308,12 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            if (SrtPath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                string text = File.ReadAllText(SrtPath);
+                Preview = text.Length <= 600 ? text : text[..600] + "…";
+                return;
+            }
             var cues = SrtPreview.ParseFirst(SrtPath, 5);
             Preview = string.Join("\n\n", cues.Select(c =>
                 $"[{c.Start:hh\\:mm\\:ss}→{c.End:hh\\:mm\\:ss}] {c.Text.Replace("\r\n", " / ")}"));

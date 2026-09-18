@@ -58,6 +58,25 @@ public class EngineLauncherTests
         Assert.DoesNotContain("--hotwords", args);
     }
 
+    [Fact]
+    public void BuildCommandLine_FormatTxt_PassesFormatAndDropsBilingual()
+    {
+        // txt 转写按块检测语言，双语标志无意义，不应下发
+        var req = new EngineRequest("a.mp4", "a.txt", "small", "float16", "bilingual", "热词", true,
+            18, 4, "txt");
+        string args = EngineLauncher.BuildCommandLine("p", "s", req).args;
+        Assert.Contains("--format txt", args);
+        Assert.DoesNotContain("--bilingual", args);
+    }
+
+    [Fact]
+    public void BuildCommandLine_DefaultFormatIsSrt()
+    {
+        var req = new EngineRequest("a.mp4", "a.srt", "small", "float16", "zh", "", true);
+        string args = EngineLauncher.BuildCommandLine("p", "s", req).args;
+        Assert.Contains("--format srt", args);
+    }
+
     [SkippableFact]
     public async Task RunAsync_WithFakeEngine_ReceivesAllEvents()
     {

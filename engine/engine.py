@@ -1,4 +1,4 @@
-"""SubtitlesFree 转写引擎：MP4 → SRT（可选中英双语）。
+"""SubtitlesFree 转写引擎：MP4 → SRT 字幕 / TXT 纯文本转写（可选中英双语）。
 
 stdout 输出 JSON Lines 事件（契约 spec §5.2）；stderr 留给原生 traceback。
 用法示例：
@@ -14,7 +14,9 @@ from emitter import emit_error, emit_log, emit_stage
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="SubtitlesFree WhisperX 引擎")
     p.add_argument("--video", help="输入视频路径（MP4）")
-    p.add_argument("--output", help="输出 SRT 路径，默认视频同名 .srt")
+    p.add_argument("--output", help="输出路径，默认视频同名 .srt / .txt（按 --format）")
+    p.add_argument("--format", default="srt", choices=["srt", "txt"],
+                   help="输出格式：srt 字幕（默认，含对齐与断句）/ txt 纯文本转写（逐块检测语言，中英混出）")
     p.add_argument("--language", default="zh", choices=["zh"])
     p.add_argument("--bilingual", action="store_true", help="输出中英双语字幕")
     p.add_argument("--model", default="large-v3-turbo",

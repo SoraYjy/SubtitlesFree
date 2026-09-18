@@ -268,7 +268,10 @@
                     Padding="16,5" Margin="8,0,0,0"/>
             <Button DockPanel.Dock="Right" Content="生成字幕" Command="{Binding GenerateCommand}"
                     Padding="20,5" FontWeight="Bold" IsEnabled="{Binding CanGenerate}"/>
-            <Button DockPanel.Dock="Left" Content="打开 SRT 所在文件夹"
+            <Button DockPanel.Dock="Right" Content="转写文本" Command="{Binding TranscribeCommand}"
+                    Padding="16,5" Margin="8,0,0,0" IsEnabled="{Binding CanGenerate}"
+                    ToolTip="转写为纯文本 TXT：逐段自动检测语言，中文英文混排（不做字幕时间轴）"/>
+            <Button DockPanel.Dock="Left" Content="打开输出所在文件夹"
                     Command="{Binding OpenFolderCommand}"/>
         </DockPanel>
     </Grid>

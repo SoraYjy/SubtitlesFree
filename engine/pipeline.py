@@ -21,6 +21,7 @@ from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
 from segmentation import segment_cues
 from srt import write_srt
+from transcribe_text import build_initial_prompt, format_transcript, transcribe_blocks
 
 PROGRESS = {"load_model": 0.05, "vad": 0.10, "transcribe": 0.60,
             "align": 0.75, "translate": 0.90, "write": 0.95}
@@ -128,10 +129,24 @@ def _install_weights_only_shim() -> None:
     ])
 
 
+def _run_txt(args, model, audio, video_sec: float, t0: float) -> None:
+    """txt 转写：分块检测语言逐块转写（transcribe_text），跳过对齐/断句/翻译。"""
+    if args.bilingual:
+        emit_log("txt 转写按块检测语言、中英混出，忽略双语设置", "warn")
+    blocks = transcribe_blocks(model, audio, stdout_guard=_stdout_to_stderr,
+                               on_progress=lambda f: emit_progress(
+                                   PROGRESS["vad"] + (PROGRESS["transcribe"] - PROGRESS["vad"]) * f))
+    emit_stage("write")
+    out_path = args.output or str(Path(args.video).with_suffix(".txt"))
+    Path(out_path).write_text(format_transcript(blocks), encoding="utf-8-sig")
+    emit_log(f"转写：{len(blocks)} 个语言块")
+    emitter.emit_done(out_path, len(blocks), video_sec, time.time() - t0)
+
+
 def run_pipeline(args) -> None:
     t0 = time.time()
     hotwords = [w.strip() for w in args.hotwords.replace("，", ",").split(",") if w.strip()]
-    initial_prompt = ("以下是可能出现的专有名词：" + "，".join(hotwords) + "。") if hotwords else None
+    initial_prompt = build_initial_prompt(hotwords, txt_mode=getattr(args, "format", "srt") == "txt")
     if args.bilingual and args.model == "large-v3-turbo":
         emit_log("large-v3-turbo 的内置翻译实测多为中文回写，双语建议改选 large-v3 模型", "warn")
 
@@ -160,6 +175,9 @@ def run_pipeline(args) -> None:
     emit_log(f"音频时长 {video_sec:.1f}s")
     emit_stage("vad")  # whisperx.transcribe 内部先跑 pyannote VAD 再批量识别
     emit_stage("transcribe")
+    if getattr(args, "format", "srt") == "txt":
+        _run_txt(args, model, audio, video_sec, t0)
+        return
     with _stdout_to_stderr():
         result = model.transcribe(audio, batch_size=16, language="zh")
     emit_progress(PROGRESS["transcribe"])
