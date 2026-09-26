@@ -22,6 +22,8 @@
 import re
 from dataclasses import dataclass, replace
 
+from textutil import clean_text
+
 HARD_GAP = 0.35     # ≥ 此字间隔视为语句停顿（实测常规字间隔 0~0.25s）
 SOFT_GAP = 0.28     # ≥ 此字间隔视为短语边界：加空格、可作回退切点
 MAX_CHARS = 18      # 单条字数上限（不含空格；人工字幕样本上限 20，留吸收余量）
@@ -61,6 +63,7 @@ def segment_cues(segments: list[dict], max_chars: int = MAX_CHARS,
     max_chars = min(max(6, max_chars), 40)  # 与 C# 侧 Math.Clamp(6, 40) 同区间
     # 吸收量另受上限 1/3 约束：吸收阈值 ≥ 字数上限会级联吸收整段，上限形同虚设
     absorb_chars = min(max(0, absorb_chars), 10, max_chars // 3)
+    segments = [_sanitize(s) for s in segments]
     groups: list[list[_Atom]] = []
     for phrase in _phrases(segments):
         groups.extend(_phrase_to_cues(phrase, max_chars, absorb_chars))
@@ -69,6 +72,20 @@ def segment_cues(segments: list[dict], max_chars: int = MAX_CHARS,
 
 
 # ---------- 原子构建与文本标点映射 ----------
+
+def _sanitize(seg: dict) -> dict:
+    """去掉 whisper 解码伪影 U+FFFD：text 与 words 同步清理（浅拷贝，不动调用方数据）。
+
+    � 若只留在 text 会破坏 _map_breaks 逐字符对齐（整段放弃句读映射）；若留在
+    word 里会直接进 cue 文本——两侧同清才能既保映射又保输出干净。
+    """
+    seg = dict(seg)
+    if seg.get("text") is not None:
+        seg["text"] = clean_text(seg["text"])
+    if seg.get("words"):
+        seg["words"] = [{**w, "word": clean_text(w.get("word") or "")} for w in seg["words"]]
+    return seg
+
 
 def _clean(raw: str) -> str:
     return _PUNCT_RE.sub("", re.sub(r"\s+", "", raw))

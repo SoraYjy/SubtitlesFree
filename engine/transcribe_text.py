@@ -12,6 +12,8 @@ pin 3.4.5，升版须复查两个 _default_*。
 """
 from contextlib import nullcontext
 
+from textutil import clean_text
+
 # 检测置信度低于此值兜底 zh（短块检测噪声大，asr.py:288 官方 warning）
 CONFIDENCE_THRESHOLD = 0.6
 
@@ -98,7 +100,8 @@ def transcribe_blocks(model, audio, *, chunk_size=30, sample_rate=16000,
         a = audio[int(run["start"] * sample_rate): int(run["end"] * sample_rate)]
         with guard():
             result = model.transcribe(a, batch_size=16, language=run["lang"])
-        text = join_segments([s.get("text", "") for s in result.get("segments", [])], run["lang"])
+        text = join_segments(
+            [clean_text(s.get("text", "")) for s in result.get("segments", [])], run["lang"])
         if text:
             blocks.append(text)
         if on_progress is not None:

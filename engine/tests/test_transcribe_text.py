@@ -160,6 +160,17 @@ def test_transcribe_blocks_merges_adjacent_same_language_regions():
     assert blocks == ["句一句二", "English."]
 
 
+def test_transcribe_blocks_strips_replacement_chars():
+    """whisper 解码伪影 U+FFFD 不进 txt 输出（真实样本：访谈转写行 3/47/71 各 1 处）。"""
+    model = FakeModel({"zh": ["更有意义的一个选择�然后呢", "呃�他可能"]})
+    blocks = transcribe_blocks(
+        model, [0.0] * 100,
+        vad_chunker=_fake_chunker([{"start": 0, "end": 5}]),
+        detect=_scripted_detect([("zh", 0.9)]))
+    assert blocks == ["更有意义的一个选择然后呢呃他可能"]
+    assert "�" not in blocks[0]
+
+
 def test_transcribe_blocks_progress_increments():
     model = FakeModel({"zh": ["一"], "en": ["two"]})
     seen = []

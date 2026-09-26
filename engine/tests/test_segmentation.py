@@ -200,3 +200,27 @@ def test_out_of_range_params_clamped():
     # max_chars 钳到 6；absorb 钳到 min(10, 6//3=2)，不级联吸收
     assert [len(c["text"]) for c in tiny] == [6, 6, 6, 4]
     assert len(huge) == 1 and len(huge[0]["text"]) == 22  # max_chars 钳到 40，整条放下
+
+
+def test_segment_cues_strips_replacement_char_and_keeps_mapping():
+    """U+FFFD（whisper 解码伪影，真实样本：访谈转写行 3/47/71）同步清理 text/words。
+
+    gap 压在 SOFT_GAP 以下，短语切分只可能来自文本逗号——� 不清掉会让
+    _map_breaks 对不齐而整段放弃映射，句读信息丢失。
+    """
+    words = [w(c, i * 0.2, i * 0.2 + 0.1) for i, c in enumerate("好的选择")]
+    words += [w(c, 0.9 + i * 0.2, 1.0 + i * 0.2) for i, c in enumerate("然后继续")]
+    cues = segment_cues([seg("好的选择�，然后继续", 0.0, 1.7, words)])
+    assert [c["text"] for c in cues] == ["好的选择", "然后继续"]  # 逗号切分成立（未因 � 放弃）
+
+
+def test_segment_cues_word_replacement_char_stripped():
+    """对齐把伪影归进 word 原子的情形：清理后纯空原子丢弃，不进 cue。
+
+    � 槽位两侧间隙压在 SOFT_GAP 之下，隔离"纯剥离"行为——否则软间隙加空格
+    （伪影位置本就有声，留空格反而语义正确）会混入本测试的断言。
+    """
+    times = [(0.0, 0.1), (0.1, 0.2), (0.2, 0.3), (0.3, 0.35), (0.35, 0.45), (0.45, 0.55)]
+    words = [w(c, s, e) for c, (s, e) in zip("铁丝网�所以", times)]
+    cues = segment_cues([seg("铁丝网�所以", 0.0, 0.55, words)])
+    assert "".join(c["text"] for c in cues) == "铁丝网所以"
