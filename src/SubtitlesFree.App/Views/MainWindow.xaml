@@ -9,6 +9,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -192,8 +193,56 @@
             </Grid>
         </Expander>
 
-        <!-- 3: 进度/日志/预览 -->
-        <Grid Grid.Row="3">
+        <!-- 3: 懂你意思（LLM 修正字幕，DeepSeek）：勾选启用，Key/模型持久化，文案随视频不持久化 -->
+        <Expander Grid.Row="3" Header="懂你意思（AI 修正字幕 · DeepSeek）" Margin="0,0,0,10">
+            <StackPanel Margin="4">
+                <CheckBox Content="启用：生成 SRT 后自动用大模型按视频文案修正一次（产出 .ai.srt，不改原文件）"
+                          IsChecked="{Binding LlmFixEnabled}" VerticalAlignment="Center"
+                          ToolTip="需要 DeepSeek API Key（platform.deepseek.com 申请）。修正只动字幕文本：时间轴由引擎逐条校验强制不变，存疑处会标「【?】」供你复核"/>
+                <StackPanel Margin="20,6,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding LlmFixEnabled}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0" Content="模型："/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding LlmModelOptions}"
+                                  SelectedItem="{Binding LlmModel}" Margin="0,2,12,2"
+                                  ToolTip="deepseek-flash 便宜快速（修正一次约几分钱）；deepseek-v4-pro 理解力更强、价格约 4 倍"/>
+                        <Label Grid.Column="2" Content="DeepSeek Key："/>
+                        <TextBox Grid.Column="3" Text="{Binding LlmApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="在 platform.deepseek.com 申请；只存本机 settings.json（明文），不会上传"/>
+                    </Grid>
+                    <Label Content="视频文案（提纲 / 概述 / 逐字稿均可）：" Margin="0,4,0,0"/>
+                    <TextBox Height="64" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                             Text="{Binding DraftText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="这个视频的文案草稿：AI 拿它对照理解内容、修正听错写错的字。草稿和实际说的不完全一致也没关系——不确定的地方 AI 会保留原文并加「【?】」标记"/>
+                    <DockPanel Margin="0,6,0,0">
+                        <TextBlock DockPanel.Dock="Right" Text="⚠ 默认 prompt 按「禁止改时间轴、存疑处标【?】」调校；修改可能降低修正质量或产出混乱（引擎仍会逐条校验时间轴兜底）"
+                                   Foreground="#B03A2E" FontSize="12" TextWrapping="Wrap" MaxWidth="520"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <Label Content="修正 prompt（可改）："/>
+                    </DockPanel>
+                    <TextBox Height="72" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                             Text="{Binding LlmPrompt, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+
+        <!-- 4: 进度/日志/预览 -->
+        <Grid Grid.Row="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -262,8 +311,8 @@
             </StackPanel>
         </Grid>
 
-        <!-- 4: 底部按钮 -->
-        <DockPanel Grid.Row="4" Margin="0,10,0,0">
+        <!-- 5: 底部按钮 -->
+        <DockPanel Grid.Row="5" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right" Content="取消" Command="{Binding CancelCommand}"
                     Padding="16,5" Margin="8,0,0,0"/>
             <Button DockPanel.Dock="Right" Content="生成字幕" Command="{Binding GenerateCommand}"

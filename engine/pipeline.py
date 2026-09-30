@@ -19,12 +19,13 @@ from pathlib import Path
 import emitter
 from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
+from llm_fix import fix_srt
 from segmentation import segment_cues
 from srt import write_srt
 from transcribe_text import build_initial_prompt, format_transcript, transcribe_blocks
 
 PROGRESS = {"load_model": 0.05, "vad": 0.10, "transcribe": 0.60,
-            "align": 0.75, "translate": 0.90, "write": 0.95}
+            "align": 0.75, "translate": 0.90, "write": 0.95, "llm_fix": 0.98}
 
 _MODELS_DIR = Path(__file__).resolve().parent / "models"
 
@@ -143,6 +144,42 @@ def _run_txt(args, model, audio, video_sec: float, t0: float) -> None:
     emitter.emit_done(out_path, len(blocks), video_sec, time.time() - t0)
 
 
+def _run_llm_fix(args, srt_path: str) -> str:
+    """懂你意思：LLM 按文案修正刚生成的 SRT → 同名 .ai.srt。失败告警并返回原路径。
+
+    时间轴安全不靠 prompt：fix_srt 逐条机械校验，不合规改动回退原文；调用失败
+    （网络/Key/限流）重试后仍不成就放弃修正——转写结果永不因修正环节受损。
+    prompt/文案由宿主写成临时文件传路径（几千字不走命令行）。
+    """
+    emit_stage("llm_fix")
+    try:
+        prompt = Path(args.llm_prompt_file).read_text(encoding="utf-8-sig")
+        draft = Path(args.draft_file).read_text(encoding="utf-8-sig")
+        srt_text = Path(srt_path).read_text(encoding="utf-8-sig")
+    except OSError as e:
+        emit_log(f"懂你意思：修正输入读取失败，保留原字幕（{e}）", "warn")
+        return srt_path
+    emit_log(f"懂你意思：调用 {args.llm_model} 修正中…")
+    fixed, info = fix_srt(srt_text, key=args.llm_key, model=args.llm_model,
+                          prompt=prompt, draft=draft,
+                          on_retry=lambda n, e: emit_log(f"懂你意思：第 {n} 次重试（{e}）", "warn"))
+    usage = info.get("usage") or {}
+    usage_note = (f"（tokens 输入 {usage.get('prompt_tokens')} / 输出 {usage.get('completion_tokens')}）"
+                  if usage.get("prompt_tokens") is not None else "")
+    if fixed is None:
+        emit_log(f"懂你意思：修正失败，保留原字幕（{info.get('error', info['status'])}）", "warn")
+        return srt_path
+    if info["status"] == "count_mismatch":
+        emit_log(f"懂你意思：LLM 返回条数不符（原 {info['orig']} 条 / 得 {info['got']} 条），"
+                 "已整体保留原字幕", "warn")
+    else:
+        emit_log(f"懂你意思：修正 {info['changed']} 条、回退 {info['kept']} 条{usage_note}")
+    ai_path = Path(srt_path).with_suffix(".ai.srt")
+    ai_path.write_text(fixed, encoding="utf-8-sig")
+    emit_log(f"已生成修正版字幕：{ai_path}")
+    return str(ai_path)
+
+
 def run_pipeline(args) -> None:
     t0 = time.time()
     hotwords = [w.strip() for w in args.hotwords.replace("，", ",").split(",") if w.strip()]
@@ -176,6 +213,8 @@ def run_pipeline(args) -> None:
     emit_stage("vad")  # whisperx.transcribe 内部先跑 pyannote VAD 再批量识别
     emit_stage("transcribe")
     if getattr(args, "format", "srt") == "txt":
+        if getattr(args, "llm_fix", False):
+            emit_log("懂你意思只适用于 SRT 字幕，txt 转写已忽略", "warn")
         _run_txt(args, model, audio, video_sec, t0)
         return
     with _stdout_to_stderr():
@@ -213,4 +252,10 @@ def run_pipeline(args) -> None:
     emit_log(f"断句：{len(result['segments'])} 段 → {len(cue_src)} 条字幕")
     cues = match_en_to_cues(cue_src, en_segments)
     write_srt(cues, out_path)
-    emitter.emit_done(out_path, len(cues), video_sec, time.time() - t0)
+    done_path = out_path
+    if getattr(args, "llm_fix", False):
+        if args.llm_key and args.llm_prompt_file and args.draft_file:
+            done_path = _run_llm_fix(args, out_path)
+        else:
+            emit_log("懂你意思：缺少 Key / prompt / 文案参数，跳过修正", "warn")
+    emitter.emit_done(done_path, len(cues), video_sec, time.time() - t0)

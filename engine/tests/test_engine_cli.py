@@ -17,6 +17,22 @@ def test_parse_args_format_txt():
     assert parse_args(["--video", "x.mp4", "--format", "txt"]).format == "txt"
 
 
+def test_parse_args_llm_fix_defaults_off():
+    args = parse_args(["--video", "x.mp4"])
+    assert args.llm_fix is False
+    assert args.llm_key == "" and args.llm_model == "deepseek-flash"
+    assert args.llm_prompt_file == "" and args.draft_file == ""
+
+
+def test_parse_args_llm_fix_flags():
+    args = parse_args(["--video", "x.mp4", "--llm-fix", "--llm-key", "sk-1",
+                       "--llm-model", "deepseek-v4-pro",
+                       "--llm-prompt-file", "p.txt", "--draft-file", "d.txt"])
+    assert args.llm_fix is True
+    assert args.llm_key == "sk-1" and args.llm_model == "deepseek-v4-pro"
+    assert args.llm_prompt_file == "p.txt" and args.draft_file == "d.txt"
+
+
 def test_selftest_emits_valid_json_lines():
     proc = subprocess.run([sys.executable, str(ENGINE), "--selftest"],
                           capture_output=True, text=True, encoding="utf-8", timeout=300)

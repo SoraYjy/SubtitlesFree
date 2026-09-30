@@ -77,6 +77,73 @@ public class EngineLauncherTests
         Assert.Contains("--format srt", args);
     }
 
+    // ---- 懂你意思（LLM 修正）：勾选才下发参数；prompt/文案走临时文件路径 ----
+
+    [Fact]
+    public void BuildCommandLine_LlmFixOn_AppendsLlmArgs()
+    {
+        var req = new EngineRequest("a.mp4", "a.srt", "small", "float16", "zh", "", true,
+            18, 4, "srt", LlmFix: true, LlmModel: "deepseek-flash", LlmApiKey: "sk-1",
+            LlmPromptFile: @"C:\t\p.txt", LlmDraftFile: @"C:\t\d.txt");
+        string args = EngineLauncher.BuildCommandLine("p", "s", req).args;
+        Assert.Contains("--llm-fix", args);
+        Assert.Contains("--llm-model deepseek-flash", args);
+        Assert.Contains("--llm-key \"sk-1\"", args);
+        Assert.Contains("--llm-prompt-file \"C:\\t\\p.txt\"", args);
+        Assert.Contains("--draft-file \"C:\\t\\d.txt\"", args);
+    }
+
+    [Fact]
+    public void BuildCommandLine_LlmFixOff_HasNoLlmArgs()
+    {
+        var req = new EngineRequest("a.mp4", "a.srt", "small", "float16", "zh", "", true);
+        string args = EngineLauncher.BuildCommandLine("p", "s", req).args;
+        Assert.DoesNotContain("--llm-fix", args);
+        Assert.DoesNotContain("--llm-model", args);
+    }
+
+    [Fact]
+    public void BuildCommandLine_LlmFixTxt_DropsLlmArgs()
+    {
+        // txt 无时间轴可修，懂你意思不下发（VM 层也不该传，这里双保险）
+        var req = new EngineRequest("a.mp4", "a.txt", "small", "float16", "zh", "", true,
+            18, 4, "txt", LlmFix: true, LlmModel: "deepseek-flash");
+        string args = EngineLauncher.BuildCommandLine("p", "s", req).args;
+        Assert.DoesNotContain("--llm-fix", args);
+    }
+
+    [Fact]
+    public void PrepareLlmFiles_WritesTempFilesAndSetsPaths()
+    {
+        var req = new EngineRequest("a.mp4", "a.srt", "small", "float16", "zh", "", true,
+            18, 4, "srt", LlmFix: true, LlmPrompt: "修正prompt", LlmDraft: "视频文案");
+        var prepared = EngineLauncher.PrepareLlmFiles(req);
+        try
+        {
+            Assert.NotEqual(req, prepared);
+            Assert.True(File.Exists(prepared.LlmPromptFile));
+            Assert.True(File.Exists(prepared.LlmDraftFile));
+            Assert.Equal("修正prompt", File.ReadAllText(prepared.LlmPromptFile)); // 无 BOM utf-8
+            Assert.Equal("视频文案", File.ReadAllText(prepared.LlmDraftFile));
+        }
+        finally
+        {
+            EngineLauncher.CleanupLlmFiles(prepared);
+        }
+        Assert.False(File.Exists(prepared.LlmPromptFile));
+        Assert.False(File.Exists(prepared.LlmDraftFile));
+    }
+
+    [Fact]
+    public void PrepareLlmFiles_NotEnabled_ReturnsRequestUnchanged()
+    {
+        var req = new EngineRequest("a.mp4", "a.srt", "small", "float16", "zh", "", true);
+        Assert.Same(req, EngineLauncher.PrepareLlmFiles(req));
+        var txt = new EngineRequest("a.mp4", "a.txt", "small", "float16", "zh", "", true,
+            18, 4, "txt", LlmFix: true, LlmPrompt: "p", LlmDraft: "d");
+        Assert.Same(txt, EngineLauncher.PrepareLlmFiles(txt));
+    }
+
     [SkippableFact]
     public async Task RunAsync_WithFakeEngine_ReceivesAllEvents()
     {

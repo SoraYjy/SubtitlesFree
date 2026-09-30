@@ -50,6 +50,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private int _maxChars = 18;
     [ObservableProperty] private int _absorbChars = 4;
 
+    // ---- 懂你意思（LLM 修正字幕，DeepSeek）
+    [ObservableProperty] private bool _llmFixEnabled;
+    [ObservableProperty] private string _llmModel = "deepseek-flash";
+    [ObservableProperty] private string _llmApiKey = "";
+    /// <summary>修正 prompt；空 = 用内置默认（首次启用时预填默认，改动可见可回退）。</summary>
+    [ObservableProperty] private string _llmPrompt = "";
+    /// <summary>视频文案草稿：随视频更换，会话内有效不持久化。</summary>
+    [ObservableProperty] private string _draftText = "";
+
     // ---- 热词组（下拉 = 各组 + 「不使用」哨兵；编辑框绑定当前组）
     private const string NoneHotwordLabel = "（不使用热词）";
     private readonly HotwordSet _noneHotwordSet = new() { Name = NoneHotwordLabel };
@@ -69,6 +78,7 @@ public partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<string> ModelOptions { get; } = ["large-v3-turbo", "large-v3", "small"];
     public IReadOnlyList<string> ComputeTypeOptions { get; } = ["float16", "int8_float16"];
+    public IReadOnlyList<string> LlmModelOptions { get; } = ["deepseek-flash", "deepseek-v4-pro"];
 
     public MainViewModel()
     {
@@ -79,6 +89,10 @@ public partial class MainViewModel : ObservableObject
         PythonPath = _svc.Settings.PythonPath;
         MaxChars = _svc.Settings.MaxChars;
         AbsorbChars = _svc.Settings.AbsorbChars;
+        LlmFixEnabled = _svc.Settings.LlmFixEnabled;
+        LlmModel = _svc.Settings.LlmModel;
+        LlmApiKey = _svc.Settings.LlmApiKey;
+        LlmPrompt = _svc.Settings.LlmPrompt;
         foreach (HotwordSet h in _svc.Settings.HotwordSets) HotwordSetItems.Add(h);
         HotwordSetItems.Add(_noneHotwordSet);
         SelectedHotwordSet = _svc.Settings.HotwordSets
@@ -88,15 +102,35 @@ public partial class MainViewModel : ObservableObject
         _ = CheckEnv();
     }
 
+    /// <summary>与 Steps 平行的阶段名列表（引擎 stage 事件 → 步骤条定位）。</summary>
+    private readonly List<string> _stages = [];
+
     private void BuildSteps()
     {
+        _stages.Clear();
         Steps.Clear();
-        string[] titles = _runFormat == "txt"
-            ? ["加载模型", "VAD 分块", "语音识别", "写入 TXT"]
-            : LanguageMode == "bilingual"
-                ? ["加载模型", "VAD 切分", "语音识别", "音素对齐", "英文翻译", "写入 SRT"]
-                : ["加载模型", "VAD 切分", "语音识别", "音素对齐", "写入 SRT"];
-        foreach (string t in titles) Steps.Add(new StepItem(t));
+        void Add(string stage, string title)
+        {
+            _stages.Add(stage);
+            Steps.Add(new StepItem(title));
+        }
+        if (_runFormat == "txt")
+        {
+            Add("load_model", "加载模型");
+            Add("vad", "VAD 分块");
+            Add("transcribe", "语音识别");
+            Add("write", "写入 TXT");
+        }
+        else
+        {
+            Add("load_model", "加载模型");
+            Add("vad", "VAD 切分");
+            Add("transcribe", "语音识别");
+            Add("align", "音素对齐");
+            if (LanguageMode == "bilingual") Add("translate", "英文翻译");
+            Add("write", "写入 SRT");
+            if (LlmFixEnabled) Add("llm_fix", "LLM 修正");
+        }
     }
 
     partial void OnModelChanged(string value) { _svc.Settings.Model = value; _svc.SaveSettings(); UpdateBilingualTurboWarning(); }
@@ -112,6 +146,18 @@ public partial class MainViewModel : ObservableObject
     partial void OnPythonPathChanged(string value) { _svc.Settings.PythonPath = value; _svc.SaveSettings(); }
     partial void OnMaxCharsChanged(int value) { _svc.Settings.MaxChars = value; _svc.SaveSettings(); }
     partial void OnAbsorbCharsChanged(int value) { _svc.Settings.AbsorbChars = value; _svc.SaveSettings(); }
+
+    partial void OnLlmFixEnabledChanged(bool value)
+    {
+        _svc.Settings.LlmFixEnabled = value;
+        _svc.SaveSettings();
+        // 首次启用预填默认 prompt：改动从可见的基线开始，不猜引擎里藏着什么
+        if (value && string.IsNullOrWhiteSpace(LlmPrompt)) LlmPrompt = LlmFixDefaults.Prompt;
+        BuildSteps();
+    }
+    partial void OnLlmModelChanged(string value) { _svc.Settings.LlmModel = value; _svc.SaveSettings(); }
+    partial void OnLlmApiKeyChanged(string value) { _svc.Settings.LlmApiKey = value; _svc.SaveSettings(); }
+    partial void OnLlmPromptChanged(string value) { _svc.Settings.LlmPrompt = value; _svc.SaveSettings(); }
 
     partial void OnSelectedHotwordSetChanged(HotwordSet? value)
     {
@@ -205,10 +251,19 @@ public partial class MainViewModel : ObservableObject
         }
         string ext = format == "txt" ? ".txt" : ".srt";
         string hotwordsFlat = HotwordLibrary.ActiveWords(_svc.Settings);
+        // 懂你意思只服务 SRT（txt 无时间轴可修）；启用则 Key 与文案必填，缺了就地拦下
+        bool llmFix = format == "srt" && LlmFixEnabled;
+        if (llmFix && (LlmApiKey.Trim().Length == 0 || DraftText.Trim().Length == 0))
+        {
+            StatusText = "懂你意思：请先填写 DeepSeek Key 和视频文案";
+            return;
+        }
         var req = new EngineRequest(
             VideoPath, Path.ChangeExtension(VideoPath, ext),
             Model, ComputeType, LanguageMode, hotwordsFlat, UseMirror,
-            Math.Clamp(MaxChars, 6, 40), Math.Clamp(AbsorbChars, 0, 10), format);
+            Math.Clamp(MaxChars, 6, 40), Math.Clamp(AbsorbChars, 0, 10), format,
+            LlmFix: llmFix, LlmModel: LlmModel, LlmApiKey: LlmApiKey.Trim(),
+            LlmPrompt: LlmFixDefaults.Effective(LlmPrompt), LlmDraft: DraftText);
 
         _runFormat = format;
         BuildSteps();
@@ -290,16 +345,8 @@ public partial class MainViewModel : ObservableObject
 
     private void MarkStep(string stage)
     {
-        int idx = stage switch
-        {
-            "load_model" => 0,
-            "vad" => 1,
-            "transcribe" => 2,
-            "align" => 3,
-            "translate" => Steps.Count - 2,
-            "write" => Steps.Count - 1,
-            _ => Steps.Count - 1,
-        };
+        int idx = _stages.IndexOf(stage);
+        if (idx < 0) idx = _stages.Count - 1;
         for (int i = 0; i < Steps.Count; i++)
             Steps[i].State = i < idx ? StepState.Done : i == idx ? StepState.Active : StepState.Pending;
     }

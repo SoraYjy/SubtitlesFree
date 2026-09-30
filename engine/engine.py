@@ -28,6 +28,12 @@ def parse_args(argv=None):
                    help="字幕单条字数上限（不含空格），超出时在标点/停顿处断开")
     p.add_argument("--absorb-chars", type=int, default=4,
                    help="断句后剩余不超过此字数时并入前一条，避免孤字尾；0=关闭")
+    p.add_argument("--llm-fix", action="store_true",
+                   help="懂你意思：生成 SRT 后调用 LLM 按文案修正一次（产出 .ai.srt，不改原文件）")
+    p.add_argument("--llm-key", default="", help="DeepSeek API Key")
+    p.add_argument("--llm-model", default="deepseek-flash", help="懂你意思 LLM 模型名")
+    p.add_argument("--llm-prompt-file", default="", help="修正 prompt 文件路径（UTF-8 文本）")
+    p.add_argument("--draft-file", default="", help="视频文案文件路径（UTF-8 文本）")
     p.add_argument("--selftest", action="store_true", help="环境自检后退出")
     return p.parse_args(argv)
 

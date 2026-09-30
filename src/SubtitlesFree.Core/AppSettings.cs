@@ -40,5 +40,16 @@ public sealed class AppSettings
     /// <summary>断句后剩余不超过此字数时并入前一条，避免孤字尾。默认 4；0 = 关闭。</summary>
     public int AbsorbChars { get; set; } = 4;
 
+    /// <summary>「懂你意思」：生成 SRT 后自动用 LLM（DeepSeek）按视频文案修正一次，产出 .ai.srt。</summary>
+    public bool LlmFixEnabled { get; set; } = false;
+
+    public string LlmModel { get; set; } = "deepseek-flash";
+
+    /// <summary>DeepSeek API Key（只存本机 %AppData%\SubtitlesFree\settings.json，明文）。</summary>
+    public string LlmApiKey { get; set; } = "";
+
+    /// <summary>修正 prompt；空 = 用 LlmFixDefaults.Prompt。</summary>
+    public string LlmPrompt { get; set; } = "";
+
     public string LastInputDir { get; set; } = "";
 }
