@@ -11,7 +11,7 @@ if sys.stdout and sys.stdout.encoding and sys.stdout.encoding.lower() not in ("u
 if sys.stderr and sys.stderr.encoding and sys.stderr.encoding.lower() not in ("utf-8", "utf8"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-STAGES = ["load_model", "vad", "transcribe", "align", "translate", "write"]
+STAGES = ["load_model", "vad", "transcribe", "align", "translate", "write", "llm_fix"]
 ERROR_CODES = ["oom", "no_cuda", "hf_download", "pyannote_auth", "generic"]
 
 

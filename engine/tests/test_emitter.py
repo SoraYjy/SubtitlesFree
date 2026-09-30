@@ -1,5 +1,7 @@
 """emitter：JSON Lines 契约 + stdout 编码安全。"""
+import inspect
 import json
+import re
 
 import pytest
 
@@ -28,6 +30,17 @@ def test_emit_stage_all_stages_roundtrip(capsys):
 def test_emit_stage_rejects_unknown(capsys):
     with pytest.raises(ValueError):
         emit_stage("transcribing")
+
+
+def test_pipeline_never_emits_stage_outside_whitelist():
+    """pipeline 的每个 emit_stage 字面量都必须在 STAGES 白名单里。
+
+    llm_fix 曾漏加：引擎跑到修正阶段才 ValueError 崩掉（用户已转写完的视频白跑）。
+    """
+    import pipeline
+    used = set(re.findall(r'emit_stage\(\s*"([a-z_]+)"', inspect.getsource(pipeline)))
+    assert used, "正则应至少抓到 load_model 等阶段"
+    assert used <= set(STAGES)
 
 
 def test_emit_progress_clamps(capsys):
