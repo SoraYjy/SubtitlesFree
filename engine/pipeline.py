@@ -146,7 +146,7 @@ def _run_txt(args, model, audio, video_sec: float, t0: float) -> None:
 def run_pipeline(args) -> None:
     t0 = time.time()
     hotwords = [w.strip() for w in args.hotwords.replace("，", ",").split(",") if w.strip()]
-    initial_prompt = build_initial_prompt(hotwords, txt_mode=getattr(args, "format", "srt") == "txt")
+    initial_prompt = build_initial_prompt(hotwords)
     if args.bilingual and args.model == "large-v3-turbo":
         emit_log("large-v3-turbo 的内置翻译实测多为中文回写，双语建议改选 large-v3 模型", "warn")
 

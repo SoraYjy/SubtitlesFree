@@ -21,17 +21,19 @@ CONFIDENCE_THRESHOLD = 0.6
 _CJK_LANGS = {"zh", "ja", "ko", "yue"}
 
 
-def build_initial_prompt(hotwords: list[str], txt_mode: bool) -> str | None:
-    """构造 initial_prompt：热词纠错为主；txt 模式另加普通话句子引导。
+def build_initial_prompt(hotwords: list[str]) -> str | None:
+    """构造 initial_prompt：普通话句子引导 + 热词纠错（SRT/TXT 两模式统一）。
 
-    txt 按区间孤立转写时 whisper 对中文倾向丢标点（实测短句全无逗号句号），
-    「以下是普通话的句子。」是社区验证的标点引导写法；SRT 模式断句靠标点映射，
-    标点由 segment 文本自然携带，不加此引导（行为保持 v1.0.0 不变）。
+    「以下是普通话的句子。」引导 whisper 输出标点——txt 短区间孤立转写会丢标点
+    （实测短句全无逗号句号）；srt 的断句靠 segment 文本标点映射，0926m249 实测
+    无标点长串只能按字数上限硬切出词中切 ×5，标点密度直接决定切点质量。
+    v1.0.0~0927 的 srt 模式只注热词（无热词则无 prompt，断句退化为 53 碎条 vs
+    83 正常），2026-09-30 起经用户批准两模式统一加引导。
     """
-    parts = ["以下是普通话的句子。"] if txt_mode else []
+    parts = ["以下是普通话的句子。"]
     if hotwords:
         parts.append("以下是可能出现的专有名词：" + "，".join(hotwords) + "。")
-    return "".join(parts) if parts else None
+    return "".join(parts)
 
 
 def decide_language(code: str, prob: float, default: str = "zh") -> str:

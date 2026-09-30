@@ -10,25 +10,16 @@ from transcribe_text import (
 )
 
 
-# ---- build_initial_prompt：热词注入 + txt 模式标点引导 ----
+# ---- build_initial_prompt：普通话句子引导（两模式统一）+ 热词注入 ----
 
-def test_build_initial_prompt_hotwords_only():
-    assert build_initial_prompt(["修脚弹", "ST弹"], txt_mode=False) == \
-        "以下是可能出现的专有名词：修脚弹，ST弹。"
-
-
-def test_build_initial_prompt_txt_mode_biases_punctuation():
-    # txt 模式：短区间孤立转写时 whisper 对中文倾向丢标点，用普通话句子引导补标点
-    assert build_initial_prompt([], txt_mode=True) == "以下是普通话的句子。"
+def test_build_initial_prompt_no_hotwords_still_biases_punctuation():
+    # 0926m249 实测：无标点长串导致断句词中切 ×5；普通话引导提高标点密度（用户已批准改默认）
+    assert build_initial_prompt([]) == "以下是普通话的句子。"
 
 
-def test_build_initial_prompt_txt_mode_combines_with_hotwords():
-    assert build_initial_prompt(["修脚弹"], txt_mode=True) == \
-        "以下是普通话的句子。以下是可能出现的专有名词：修脚弹。"
-
-
-def test_build_initial_prompt_srt_no_hotwords_none():
-    assert build_initial_prompt([], txt_mode=False) is None
+def test_build_initial_prompt_hotwords_combined():
+    assert build_initial_prompt(["修脚弹", "ST弹"]) == \
+        "以下是普通话的句子。以下是可能出现的专有名词：修脚弹，ST弹。"
 
 
 # ---- decide_language：置信度阈值 + 兜底默认语言 ----
