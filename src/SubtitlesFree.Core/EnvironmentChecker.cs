@@ -5,7 +5,7 @@ namespace SubtitlesFree.Core;
 
 public sealed record EnvReport(
     bool PythonOk, string PythonDetail,
-    bool TorchOk, bool CudaOk,
+    bool TorchOk, bool CudaOk, bool TorchInstalledSpec, bool CpuBuild,
     bool WhisperXOk,
     bool ModelCached, string ModelDetail,
     string? GpuName, int? VramTotalMb, int? VramUsedMb,
@@ -26,29 +26,44 @@ public static class EnvironmentChecker
         string python = string.IsNullOrWhiteSpace(pythonPath) ? "python" : pythonPath;
 
         // 1) Python
-        string? ver = await RunCaptureAsync(python,
-            "-c \"import sys;print(sys.version.split()[0])\"", 15, log);
+        string? ver = (await RunCaptureAsync(python,
+            "-c \"import sys;print(sys.version.split()[0])\"", 15, log)).Out;
         bool pyOk = ver is not null;
         string pyDetail = ver is null ? "未找到可用的 python" : $"Python {ver.Trim()}";
         log?.Invoke(pyOk ? $"{pyDetail} @ {python}" : pyDetail);
 
-        // 2) torch + CUDA
-        bool torchOk = false, cudaOk = false;
+        // 2) torch + CUDA。import 失败 ≠ 未安装：瞬时驱动重置/杀软锁 DLL 同样让 import 挂掉
+        //    （2026-10-01 实测：游戏启动瞬间 import 失败，稍后自愈，却被显示成「未安装」误导重装）。
+        //    故 find_spec 区分两种失败；stderr 尾部进日志定责；torch.version.cuda 区分 CPU 轮子。
+        bool torchOk = false, cudaOk = false, torchSpec = false, cpuBuild = false;
         string torchDetail = "torch 未安装";
         if (pyOk)
         {
-            string? out2 = await RunCaptureAsync(python,
-                "-c \"import torch;print(torch.__version__);print(torch.cuda.is_available())\"", 60, log);
-            string[] lines = (out2 ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            Probe probe = await RunCaptureAsync(python,
+                "-c \"import torch;print(torch.__version__);print(torch.version.cuda);print(torch.cuda.is_available())\"",
+                60, log);
+            string[] lines = (probe.Out ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             torchOk = lines.Length >= 1;
-            cudaOk = lines.Length >= 2 && lines[^1].Equals("True", StringComparison.OrdinalIgnoreCase);
+            cpuBuild = lines.Length >= 2 && lines[1] == "None";
+            cudaOk = lines.Length >= 3 && lines[^1].Equals("True", StringComparison.OrdinalIgnoreCase);
             if (torchOk) torchDetail = $"torch {lines[0]}";
+            else
+            {
+                Probe spec = await RunCaptureAsync(python,
+                    "-c \"import importlib.util;print(importlib.util.find_spec('torch') is not None)\"", 15, log);
+                torchSpec = (spec.Out ?? "").Trim() == "True";
+                if (torchSpec)
+                {
+                    torchDetail = "torch 已安装但加载失败";
+                    if (probe.ErrTail is not null) log?.Invoke($"torch 导入报错：{probe.ErrTail}");
+                }
+            }
             log?.Invoke(torchDetail + (cudaOk ? "，CUDA 可用" : "，CUDA 不可用"));
         }
 
         // 3) whisperx（import 成功时无 stdout 输出，须主动打印标记，否则空输出会被当作失败）
         bool whisperxOk = pyOk
-            && await RunCaptureAsync(python, "-c \"import whisperx;print('ok')\"", 60, log) is not null;
+            && (await RunCaptureAsync(python, "-c \"import whisperx;print('ok')\"", 60, log)).Out is not null;
         log?.Invoke(whisperxOk ? "whisperx 已安装" : "whisperx 未安装");
 
         // 4) 模型缓存：本地 engine/models/<model>（turbo 另认遗留 engine/models/asr）或 HF hub 缓存，
@@ -69,14 +84,14 @@ public static class EnvironmentChecker
         // 5) ffmpeg（whisperx.load_audio 硬依赖）：内置优先（随仓库/发布包分发），否则探 PATH
         string? bundledFfmpeg = FindBundledFfmpeg();
         bool ffmpegOk = bundledFfmpeg is not null
-            || await RunCaptureAsync("ffmpeg", "-version", 10, log) is not null;
+            || (await RunCaptureAsync("ffmpeg", "-version", 10, log)).Out is not null;
         log?.Invoke(ffmpegOk
             ? bundledFfmpeg is not null ? $"ffmpeg 内置：{bundledFfmpeg}" : "ffmpeg 已安装（系统 PATH）"
             : "ffmpeg 未找到（内置与系统 PATH 均无）");
 
         // 6) GPU（nvidia-smi，无则跳过）
-        string? gpuOut = await RunCaptureAsync("nvidia-smi",
-            "--query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits", 10, log);
+        string? gpuOut = (await RunCaptureAsync("nvidia-smi",
+            "--query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits", 10, log)).Out;
         (string? gpuName, int? total, int? used) = (null, null, null);
         if (gpuOut is not null)
         {
@@ -84,18 +99,25 @@ public static class EnvironmentChecker
             (gpuName, total, used) = ParseGpuLine(firstLine);
         }
 
-        return new EnvReport(pyOk, pyDetail, torchOk, cudaOk, whisperxOk, modelCached, modelDetail,
-            gpuName, total, used, ffmpegOk);
+        return new EnvReport(pyOk, pyDetail, torchOk, cudaOk, torchSpec, cpuBuild,
+            whisperxOk, modelCached, modelDetail, gpuName, total, used, ffmpegOk);
     }
 
-    /// <summary>EnvReport → 状态条逐项展示（纯函数）。缺项按项给修复提示；正常项 Hint 为空。</summary>
+    /// <summary>EnvReport → 状态条逐项展示（纯函数）。缺项按项给修复提示；正常项 Hint 为空。
+    /// torch 失败按成因分三类：真未装（pip 命令）/ 装了加载失败（瞬时，重测）/ CPU 轮子（重装 cu124）。</summary>
     public static IReadOnlyList<EnvItem> BuildItems(EnvReport r)
     {
-        string torchHint = !r.TorchOk
-            ? "pip install torch --index-url https://download.pytorch.org/whl/cu124"
-            : !r.CudaOk
-                ? "CUDA 不可用：更新 NVIDIA 显卡驱动（否则回退 CPU，速度很慢）"
-                : "";
+        string torchHint;
+        if (!r.TorchOk)
+            torchHint = r.TorchInstalledSpec
+                ? "torch 已安装但加载失败（多为驱动重置/杀软瞬时占用，与显卡游戏等同时刻易发）：稍后点「检测环境」重测；仍失败看日志「torch 导入报错」一行定位"
+                : "pip install torch --index-url https://download.pytorch.org/whl/cu124";
+        else if (!r.CudaOk)
+            torchHint = r.CpuBuild
+                ? "torch 是 CPU 版轮子（无 CUDA，更新驱动也没用）：pip uninstall torch 后重装 pip install torch --index-url https://download.pytorch.org/whl/cu124"
+                : "CUDA 不可用：更新 NVIDIA 显卡驱动（否则回退 CPU，速度很慢）";
+        else
+            torchHint = "";
         return
         [
             new("Python", r.PythonOk,
@@ -167,8 +189,15 @@ public static class EnvironmentChecker
             .FirstOrDefault(File.Exists) is { } found ? Path.GetFullPath(found) : null;
     }
 
-    /// <summary>跑命令取全部 stdout；失败/超时返回 null。超时杀进程。</summary>
-    private static async Task<string?> RunCaptureAsync(
+    /// <summary>探测结果：Out 是 stdout（空输出 = null）；ErrTail 是 stderr 最后一行（诊断
+    /// import 失败用——「torch 未安装」与「装了但加载失败」症状相同，报错文本才定得了责）。</summary>
+    private sealed record Probe(string? Out, string? ErrTail)
+    {
+        public static readonly Probe Fail = new(null, null);
+    }
+
+    /// <summary>跑命令取全部 stdout；失败/超时 Out=null。超时杀进程。stderr 同步读尾不阻塞。</summary>
+    private static async Task<Probe> RunCaptureAsync(
         string exe, string args, int timeoutSec, Action<string>? log)
     {
         try
@@ -184,8 +213,9 @@ public static class EnvironmentChecker
                 StandardErrorEncoding = Encoding.UTF8,
             };
             using var process = Process.Start(psi);
-            if (process is null) return null;
-            string output = await process.StandardOutput.ReadToEndAsync(cts.Token);
+            if (process is null) return Probe.Fail;
+            Task<string?> outTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+            Task<string> errTask = process.StandardError.ReadToEndAsync(cts.Token);
             try
             {
                 await process.WaitForExitAsync(cts.Token);
@@ -194,14 +224,26 @@ public static class EnvironmentChecker
             {
                 try { process.Kill(entireProcessTree: true); } catch { /* 已退出 */ }
                 log?.Invoke($"探测超时（{timeoutSec}s）：{exe}");
-                return null;
+                return Probe.Fail;
             }
-            return string.IsNullOrWhiteSpace(output) ? null : output;
+            string? output = await outTask;   // 进程已退出，读尾不会久等
+            string err = await errTask;
+            return string.IsNullOrWhiteSpace(output) ? new Probe(null, Tail(err)) : new Probe(output, null);
         }
         catch (Exception ex)
         {
             log?.Invoke($"探测失败 {exe}: {ex.Message}");
-            return null;
+            return Probe.Fail;
         }
+    }
+
+    /// <summary>stderr 末行（traceback 的异常名+消息最值钱）；空/超长截断。</summary>
+    private static string? Tail(string? err)
+    {
+        if (string.IsNullOrWhiteSpace(err)) return null;
+        string[] lines = err.Trim().Split('\n');
+        string last = lines[^1].Trim();
+        if (last.Length == 0) return null;
+        return last.Length > 300 ? last[..300] : last;
     }
 }

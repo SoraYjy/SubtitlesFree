@@ -88,8 +88,8 @@ public class EnvironmentCheckerTests
 
     private static EnvReport MakeReport(
         bool py = true, bool torch = true, bool cuda = true, bool wx = true,
-        bool model = true, bool ffmpeg = true) =>
-        new(py, "Python 3.11", torch, cuda, wx, model,
+        bool model = true, bool ffmpeg = true, bool torchSpec = false, bool cpuBuild = false) =>
+        new(py, "Python 3.11", torch, cuda, torchSpec, cpuBuild, wx, model,
             model ? "已缓存" : "未缓存：应放到 <engine/models 目录>（首跑自动下载；国内可开镜像或按 README 用 ModelScope 预下载）",
             "GPU", 12288, 100, ffmpeg);
 
@@ -124,6 +124,40 @@ public class EnvironmentCheckerTests
         Assert.False(torch.Ok);
         Assert.Contains("驱动", torch.Hint);
         Assert.DoesNotContain("pip", torch.Hint);
+    }
+
+    // ---- torch import 失败的分类提示（03:51 实测：瞬时 DLL 失败被显示成「未安装」误导重装） ----
+
+    [Fact]
+    public void BuildItems_TorchImportFailButInstalled_HintsRetestNotPip()
+    {
+        // find_spec 能找到 torch = 装了但 import 挂（瞬时驱动/杀软占用），不该叫人 pip install
+        var torch = EnvironmentChecker.BuildItems(MakeReport(torch: false, cuda: false, torchSpec: true))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.False(torch.Ok);
+        Assert.Contains("已安装但加载失败", torch.Hint);
+        Assert.DoesNotContain("pip install", torch.Hint);
+    }
+
+    [Fact]
+    public void BuildItems_TorchTrulyMissing_KeepsPipInstallHint()
+    {
+        var torch = EnvironmentChecker.BuildItems(MakeReport(torch: false, cuda: false, torchSpec: false))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.Contains("pip install torch", torch.Hint);
+        Assert.Contains("cu124", torch.Hint);
+    }
+
+    [Fact]
+    public void BuildItems_CudaMissingCpuBuild_HintsWheelReinstallNotDriver()
+    {
+        // hint 三态盲区修复：CPU 版轮子（torch.version.cuda 为 None）装最新驱动也没用
+        var torch = EnvironmentChecker.BuildItems(MakeReport(cuda: false, cpuBuild: true))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.False(torch.Ok);
+        Assert.Contains("CPU 版", torch.Hint);
+        Assert.Contains("cu124", torch.Hint);
+        Assert.DoesNotContain("更新 NVIDIA 显卡驱动", torch.Hint);  // 换驱动没用，别误导
     }
 
     [SkippableFact]
