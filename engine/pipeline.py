@@ -19,7 +19,7 @@ from pathlib import Path
 import emitter
 from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
-from llm_fix import fix_srt
+from llm_fix import build_change_report, fix_srt, read_srt_cues
 from segmentation import segment_cues
 from srt import write_srt
 from transcribe_text import build_initial_prompt, format_transcript, transcribe_blocks
@@ -177,6 +177,14 @@ def _run_llm_fix(args, srt_path: str) -> str:
     ai_path = Path(srt_path).with_suffix(".ai.srt")
     ai_path.write_text(fixed, encoding="utf-8-sig")
     emit_log(f"已生成修正版字幕：{ai_path}")
+    # 改动清单：本地 diff 两份 SRT（清单零成本且与实际产物一致），0 改动不产出
+    if info["status"] == "ok" and info.get("changed"):
+        report = build_change_report(read_srt_cues(srt_text), read_srt_cues(fixed),
+                                     model=args.llm_model, stats=info)
+        if report:
+            report_path = ai_path.with_suffix(".ai.改动清单.txt")
+            report_path.write_text(report, encoding="utf-8-sig")
+            emit_log(f"改动清单：{report_path}")
     return str(ai_path)
 
 

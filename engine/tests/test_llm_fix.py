@@ -1,6 +1,7 @@
 """llm_fix：懂你意思——SRT 解析/消息构造/机械校验合并/LLM 调用重试（transport 全 DI，不碰网络）。"""
 import llm_fix
 from llm_fix import (
+    build_change_report,
     build_messages,
     call_llm,
     fix_srt,
@@ -249,3 +250,48 @@ def test_fix_srt_garbage_reply_is_parse_error():
                           transport=_fake_transport(200, "抱歉，我无法处理这个请求。"))
     assert fixed is None
     assert info["status"] == "parse_error"
+
+
+# ---- build_change_report：本地 diff 产出改动清单（修正 43 条的 1001g3 实测形态） ----
+
+def _orig_and_fixed():
+    orig = read_srt_cues(ORIG_SRT)
+    fixed = read_srt_cues(ORIG_SRT.replace("推荐者", "推荐").replace("入场费是11万", "入场费是11万【?】"))
+    return orig, fixed
+
+
+def test_change_report_lists_changed_cues_with_old_new():
+    orig, fixed = _orig_and_fixed()
+    report = build_change_report(orig, fixed, model="deepseek-flash",
+                                 stats={"status": "ok", "changed": 2, "kept": 0})
+    assert "[#1] 00:00:00,331" in report
+    assert "- 机密大坝长工AZ-3的入场费是11万" in report
+    assert "+ 机密大坝长工AZ-3的入场费是11万【?】" in report
+    assert "[#2] 00:00:03,132" in report
+    assert "- 今天给大家推荐者M249" in report and "+ 今天给大家推荐M249" in report
+
+
+def test_change_report_has_header_and_uncertain_section():
+    orig, fixed = _orig_and_fixed()
+    report = build_change_report(orig, fixed, model="deepseek-flash",
+                                 stats={"status": "ok", "changed": 2, "kept": 0})
+    assert "deepseek-flash" in report
+    assert "共 2 条" in report and "修改 2" in report
+    assert "存疑待复核" in report
+    assert "[#1]" in report.split("存疑待复核")[1]  # 【?】条目进复核索引
+
+
+def test_change_report_no_changes_returns_empty():
+    orig = read_srt_cues(ORIG_SRT)
+    assert build_change_report(orig, orig, model="m",
+                               stats={"status": "ok", "changed": 0, "kept": 0}) == ""
+
+
+def test_change_report_uncertain_only_marker_addition_counts():
+    # 纯加【?】也是改动（对照 1001g3 #4/#20）
+    orig, fixed = _orig_and_fixed()
+    fixed = read_srt_cues(ORIG_SRT)  # 只给原文
+    fixed[0] = {**fixed[0], "text": fixed[0]["text"] + "【?】"}
+    report = build_change_report(orig, fixed, model="m",
+                                 stats={"status": "ok", "changed": 1, "kept": 0})
+    assert "+ " in report and "【?】" in report

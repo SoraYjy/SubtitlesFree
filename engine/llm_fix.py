@@ -148,6 +148,36 @@ def call_llm(messages: list[dict], *, key: str, model: str, url: str = DEEPSEEK_
     return None, f"{last_err}（已重试 {retries} 次）"
 
 
+UNCERTAIN_MARK = "【?】"
+
+
+def build_change_report(orig: list[dict], new: list[dict], *, model: str,
+                        stats: dict) -> str:
+    """本地 diff 产出改动清单 txt（给用户复核用，替代模型自述清单——免费且绝对准确）。
+
+    结构：统计头 + 修改区（每条 - 原文 / + 新文，带序号与起始时间码）+ 存疑待复核区
+    （新文本含【?】的条目索引）。无任何文本改动返回 ""（调用方不产出文件）。
+    """
+    changed = [(o, n) for o, n in zip(orig, new) if o["text"] != n["text"]]
+    uncertain = [(i, n) for i, n in enumerate(new, start=1) if UNCERTAIN_MARK in n["text"]]
+    if not changed and not uncertain:
+        return ""
+    head = (f"懂你意思 · 改动清单\n"
+            f"模型 {model} ｜ 共 {len(orig)} 条 ｜ 修改 {stats.get('changed', len(changed))}"
+            f" ｜ 回退 {stats.get('kept', 0)} ｜ 存疑【?】{len(uncertain)}\n")
+    parts = [head]
+    if changed:
+        blocks = []
+        for idx, (o, n) in ((i + 1, pair) for i, pair in enumerate(zip(orig, new))
+                            if pair[0]["text"] != pair[1]["text"]):
+            blocks.append(f"[#{idx}] {format_ts(o['start'])}\n- {o['text']}\n+ {n['text']}")
+        parts.append(f"== 修改（{len(changed)}）==\n" + "\n\n".join(blocks) + "\n")
+    if uncertain:
+        lines = [f"[#{i}] {n['text']}" for i, n in uncertain]
+        parts.append(f"\n== 存疑待复核（{len(uncertain)}）==\n" + "\n".join(lines) + "\n")
+    return "\n".join(parts)
+
+
 def fix_srt(srt_text: str, *, key: str, model: str, prompt: str, draft: str,
             url: str = DEEPSEEK_URL, transport=None, retries: int = 2,
             backoff: float = 2.0, sleep=time.sleep, on_retry=None) -> tuple[str | None, dict]:
