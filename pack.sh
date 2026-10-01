@@ -6,7 +6,11 @@ cd "$(dirname "$0")"
 
 OUT=dist/SubtitlesFree
 echo "[1/4] publish（self-contained · single-file · win-x64）..."
-rm -rf "$OUT"
+# 清空即可；顶层目录本体有时被反作弊/杀软扫描句柄占住删不掉（Device or resource busy），
+# 内容删净后复用该目录，不影响产物正确性
+rm -rf "$OUT" 2>/dev/null || true
+rm -rf "$OUT"/* 2>/dev/null || true
+mkdir -p "$OUT"
 dotnet publish src/SubtitlesFree.App -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -o "$OUT"
 
@@ -29,12 +33,11 @@ echo "[4/4] 生成 安装依赖.bat ..."
 # torch 不在 lock（+cu124 本地版本号不在普通镜像），由命令 2 单独锁版本安装
 cat > "$OUT/安装依赖.bat" <<'EOF'
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 title SubtitlesFree 依赖安装
 echo ================================================
 echo  首次安装约需下载 3.5GB，视网速 10~40 分钟。
-echo  全程无需操作，装完窗口会显示 "安装完成"。
+echo  全程无需操作，装完窗口会显示「安装完成」。
 echo ================================================
 echo [1/3] 升级 pip ...
 runtime\python.exe -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
@@ -45,7 +48,7 @@ echo [3/3] 安装引擎依赖（whisperx 等）...
 runtime\python.exe -m pip install -r engine\requirements.lock.txt -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
 echo.
 echo ================================================
-echo  安装完成！回到 SubtitlesFree 点 "检测环境"。
+echo  安装完成！回到 SubtitlesFree 点「检测环境」。
 echo ================================================
 pause
 exit /b 0
@@ -56,8 +59,10 @@ echo  已装好的部分会自动跳过。若反复失败，请把本窗口截�
 pause
 exit /b 1
 EOF
-# bat 必须 CRLF（LF 行尾下 goto/label 在部分 Windows 失灵）；UTF-8 无 BOM 由 bash 天然保证
-sed -i 's/\r\?$/\r/' "$OUT/安装依赖.bat"
+# bat 存 GBK：中文 Windows 控制台原生 936 代码页，native 解析不出错；
+# UTF-8+chcp 65001 实测会让 cmd 行读取字节错位（echo 断行、有弄乱后续命令行的风险）。
+# CRLF 必须保留（LF 行尾下 goto/label 在部分 Windows 失灵）；先转码再加 CR（GBK 尾字节可能含 \x5C，但 sed 只在行尾追加，安全）
+iconv -f UTF-8 -t GBK "$OUT/安装依赖.bat" | sed 's/$/\r/' > "$OUT/安装依赖.bat.tmp" && mv "$OUT/安装依赖.bat.tmp" "$OUT/安装依赖.bat"
 
 echo "完成。"
 echo "产出：$OUT  （$(du -sh "$OUT" | cut -f1)）"
