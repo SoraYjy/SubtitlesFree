@@ -20,6 +20,10 @@ cp engine/*.py "$OUT/engine/"
 cp engine/requirements*.txt "$OUT/engine/"
 # ffmpeg 随仓库分发（engine/ffmpeg.exe），放 exe 旁——引擎启动时由 GUI 前置到子进程 PATH
 cp engine/ffmpeg.exe "$OUT/ffmpeg.exe"
+# 预构建 wheel：antlr4-python3-runtime 4.9.3 只有 sdist 且其打包缺 bin/pygrun，
+# 新版 setuptools 构建必炸——随包发现成 wheel，用户侧离线预装，lock 同名要求即已满足
+mkdir -p "$OUT/engine/embed"
+cp engine/embed/*.whl "$OUT/engine/embed/"
 
 echo "[3/4] 组装 runtime/（内嵌 Python 3.11，pip 预装，依赖留给用户侧 bat）..."
 mkdir -p "$OUT/runtime"
@@ -49,6 +53,9 @@ rem Official cu124 index: the path real users have used since v1.0.0.
 rem Aliyun flat mirror is throttled (~0.2 MB/s); SJTU page is not pip-parseable for +cu124.
 runtime\python.exe -m pip install torch==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124 || goto fail
 echo [3/3] Installing engine dependencies (whisperx etc.) ...
+rem antlr4-python3-runtime 4.9.3: sdist-only and unbuildable with modern setuptools,
+rem so a prebuilt wheel ships with the package - install it offline first.
+runtime\python.exe -m pip install --no-index --find-links engine\embed antlr4-python3-runtime==4.9.3 || goto fail
 runtime\python.exe -m pip install -r engine\requirements.lock.txt -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
 echo.
 echo ================================================
