@@ -34,17 +34,18 @@ cd /d "%~dp0"
 title SubtitlesFree 依赖安装
 echo ================================================
 echo  首次安装约需下载 3.5GB，视网速 10~40 分钟。
-echo  全程无需操作，装完窗口会显示「安装完成」。
+echo  全程无需操作，装完窗口会显示 "安装完成"。
 echo ================================================
 echo [1/3] 升级 pip ...
 runtime\python.exe -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
 echo [2/3] 安装 torch（CUDA 版，约 2.5GB，最耗时）...
-runtime\python.exe -m pip install torch==2.6.0+cu124 -f https://mirror.sjtu.edu.cn/pytorch-wheels/cu124/ -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
+rem 官方 cu124 索引：项目 v1.0.0 起真实用户走通的老路线；阿里/上交平铺镜像实测要么限速要么列表页 pip 解析不出 +cu124 轮子
+runtime\python.exe -m pip install torch==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124 || goto fail
 echo [3/3] 安装引擎依赖（whisperx 等）...
 runtime\python.exe -m pip install -r engine\requirements.lock.txt -i https://mirrors.aliyun.com/pypi/simple/ || goto fail
 echo.
 echo ================================================
-echo  安装完成！回到 SubtitlesFree 点「检测环境」。
+echo  安装完成！回到 SubtitlesFree 点 "检测环境"。
 echo ================================================
 pause
 exit /b 0
