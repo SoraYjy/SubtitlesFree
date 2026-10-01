@@ -1,3 +1,6 @@
+# 全量版本锁：engine/.venv pip freeze 快照（2026-10-02 与 venv 核验逐包一致）。发布包「安装依赖.bat」安装本文件。
+# torch==2.6.0+cu124 特意不在本文件：+cu124 本地版本号只在 PyTorch 官方/镜像索引上存在，由 bat 命令 2 单独锁版本安装；
+# torchaudio==2.6.0（无本地版本号）保留——版本匹配忽略本地段，pip 不会把已装的 +cu124 torch 换成 PyPI 版。
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
 aiosignal==1.4.0
@@ -99,7 +102,6 @@ tabulate==0.10.0
 tensorboardX==2.6.5
 threadpoolctl==3.6.0
 tokenizers==0.23.2
-torch==2.6.0+cu124
 torch-audiomentations==0.12.0
 torch_pitch_shift==1.2.5
 torchaudio==2.6.0
