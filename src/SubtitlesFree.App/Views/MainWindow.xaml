@@ -211,19 +211,31 @@
                         </Style>
                     </StackPanel.Style>
                     <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Content="模型："/>
-                        <ComboBox Grid.Column="1" ItemsSource="{Binding LlmModelOptions}"
-                                  SelectedItem="{Binding LlmModel}" Margin="0,2,12,2"
-                                  ToolTip="deepseek-flash 便宜快速（修正一次约几分钱）；deepseek-v4-pro 理解力更强、价格约 4 倍"/>
-                        <Label Grid.Column="2" Content="DeepSeek Key："/>
-                        <TextBox Grid.Column="3" Text="{Binding LlmApiKey, UpdateSourceTrigger=PropertyChanged}"
+                        <Label Grid.Row="0" Grid.Column="0" Content="模型："/>
+                        <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,2,12,2">
+                            <Button DockPanel.Dock="Right" Content="刷新" Command="{Binding RefreshLlmModelsCommand}"
+                                    Padding="8,2" Margin="6,0,0,0"
+                                    ToolTip="从 DeepSeek 官方接口拉取当前在售模型（模型会随版本更新改名）；拉取失败自动用缓存或内置清单"/>
+                            <ComboBox ItemsSource="{Binding LlmModelItems}"
+                                      SelectedItem="{Binding LlmModel}"
+                                      ToolTip="清单实时来自官方接口；deepseek-flash 便宜快速（修正一次约几分钱），其余模型理解力更强、价格更高"/>
+                        </DockPanel>
+                        <Label Grid.Row="0" Grid.Column="2" Content="DeepSeek Key："/>
+                        <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding LlmApiKey, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="在 platform.deepseek.com 申请；只存本机 settings.json（明文），不会上传"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                                   Text="{Binding LlmModelSource, StringFormat=模型清单：{0}}"
+                                   Foreground="Gray" FontSize="12" Margin="0,1,0,2"/>
                     </Grid>
                     <Label Content="视频文案（提纲 / 概述 / 逐字稿均可）：" Margin="0,4,0,0"/>
                     <TextBox Height="64" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"

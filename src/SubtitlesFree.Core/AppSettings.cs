@@ -51,5 +51,11 @@ public sealed class AppSettings
     /// <summary>修正 prompt；空 = 用 LlmFixDefaults.Prompt。</summary>
     public string LlmPrompt { get; set; } = "";
 
+    /// <summary>懂你意思模型下拉缓存（来自 /models 在线拉取；空 = 未拉过，用内置清单）。</summary>
+    public List<string> LlmModels { get; set; } = [];
+
+    /// <summary>上次拉取模型列表时间（展示缓存新旧；default = 未拉过）。</summary>
+    public DateTime LlmModelsFetchedAt { get; set; }
+
     public string LastInputDir { get; set; } = "";
 }

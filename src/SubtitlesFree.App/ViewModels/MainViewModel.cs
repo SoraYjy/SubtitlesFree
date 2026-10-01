@@ -58,6 +58,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _llmPrompt = "";
     /// <summary>视频文案草稿：随视频更换，会话内有效不持久化。</summary>
     [ObservableProperty] private string _draftText = "";
+    /// <summary>模型下拉：/models 在线获取，失败回退缓存/内置清单（模型会随版本改名，不写死）。</summary>
+    [ObservableProperty] private ObservableCollection<string> _llmModelItems;
+    /// <summary>模型清单来源提示（在线获取 / 缓存·拉取失败 / 内置清单 等）。</summary>
+    [ObservableProperty] private string _llmModelSource = "";
 
     // ---- 热词组（下拉 = 各组 + 「不使用」哨兵；编辑框绑定当前组）
     private const string NoneHotwordLabel = "（不使用热词）";
@@ -78,7 +82,6 @@ public partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<string> ModelOptions { get; } = ["large-v3-turbo", "large-v3", "small"];
     public IReadOnlyList<string> ComputeTypeOptions { get; } = ["float16", "int8_float16"];
-    public IReadOnlyList<string> LlmModelOptions { get; } = ["deepseek-flash", "deepseek-v4-pro"];
 
     public MainViewModel()
     {
@@ -89,10 +92,17 @@ public partial class MainViewModel : ObservableObject
         PythonPath = _svc.Settings.PythonPath;
         MaxChars = _svc.Settings.MaxChars;
         AbsorbChars = _svc.Settings.AbsorbChars;
+        LlmModelItems = new ObservableCollection<string>(
+            _svc.Settings.LlmModels.Count > 0 ? _svc.Settings.LlmModels : DeepSeekClient.FallbackModels);
+        LlmModelSource = _svc.Settings.LlmModels.Count > 0
+            ? $"缓存 {_svc.Settings.LlmModelsFetchedAt:MM-dd HH:mm}"
+            : "内置清单";
         LlmFixEnabled = _svc.Settings.LlmFixEnabled;
         LlmModel = _svc.Settings.LlmModel;
         LlmApiKey = _svc.Settings.LlmApiKey;
         LlmPrompt = _svc.Settings.LlmPrompt;
+        // 启用即拉一次在售模型——不能只靠 OnLlmFixEnabledChanged：ctor 里 Key 赋值在其之后，钩子触发时还是空串
+        if (LlmFixEnabled && LlmApiKey.Trim().Length > 0) _ = RefreshLlmModels();
         foreach (HotwordSet h in _svc.Settings.HotwordSets) HotwordSetItems.Add(h);
         HotwordSetItems.Add(_noneHotwordSet);
         SelectedHotwordSet = _svc.Settings.HotwordSets
@@ -154,10 +164,56 @@ public partial class MainViewModel : ObservableObject
         // 首次启用预填默认 prompt：改动从可见的基线开始，不猜引擎里藏着什么
         if (value && string.IsNullOrWhiteSpace(LlmPrompt)) LlmPrompt = LlmFixDefaults.Prompt;
         BuildSteps();
+        if (value && LlmApiKey.Trim().Length > 0) _ = RefreshLlmModels(); // 启用即拉一次在售模型
     }
     partial void OnLlmModelChanged(string value) { _svc.Settings.LlmModel = value; _svc.SaveSettings(); }
     partial void OnLlmApiKeyChanged(string value) { _svc.Settings.LlmApiKey = value; _svc.SaveSettings(); }
     partial void OnLlmPromptChanged(string value) { _svc.Settings.LlmPrompt = value; _svc.SaveSettings(); }
+
+    /// <summary>拉取在售模型（在线 → 失败回退缓存/内置），刷新下拉与来源提示。Key 为空不发请求。</summary>
+    [RelayCommand]
+    private async Task RefreshLlmModels()
+    {
+        string key = LlmApiKey.Trim();
+        if (key.Length == 0)
+        {
+            LlmModelSource = "填 Key 后可获取最新模型";
+            return;
+        }
+        LlmModelSource = "模型列表刷新中…";
+        string[]? models = await DeepSeekClient.ListModels(key);
+        if (models is { Length: > 0 })
+        {
+            _svc.Settings.LlmModels = [.. models];
+            _svc.Settings.LlmModelsFetchedAt = DateTime.Now;
+            _svc.SaveSettings();
+            RebuildLlmModelItems(models, "在线获取");
+            AppendLog($"模型列表已更新（{models.Length} 个）");
+        }
+        else if (_svc.Settings.LlmModels.Count > 0)
+        {
+            RebuildLlmModelItems(_svc.Settings.LlmModels,
+                $"缓存 {_svc.Settings.LlmModelsFetchedAt:MM-dd HH:mm} · 拉取失败");
+            AppendLog("拉取模型列表失败，用上次缓存", "WARN");
+        }
+        else
+        {
+            RebuildLlmModelItems(DeepSeekClient.FallbackModels, "内置清单 · 拉取失败");
+            AppendLog("拉取模型列表失败，用内置清单", "WARN");
+        }
+    }
+
+    /// <summary>重建模型下拉并保留当前选中（手选过的模型即使不在新清单里也不丢）。</summary>
+    private void RebuildLlmModelItems(IEnumerable<string> models, string source)
+    {
+        List<string> list = models.Where(m => m.Length > 0).Distinct().ToList();
+        if (LlmModel.Length > 0 && !list.Contains(LlmModel))
+            list.Insert(0, LlmModel);
+        LlmModelItems = new ObservableCollection<string>(list);
+        LlmModelSource = source;
+        if (!list.Contains(LlmModel))
+            LlmModel = list[0];
+    }
 
     partial void OnSelectedHotwordSetChanged(HotwordSet? value)
     {
