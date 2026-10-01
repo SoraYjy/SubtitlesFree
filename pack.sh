@@ -28,8 +28,16 @@ cp engine/embed/*.whl "$OUT/engine/embed/"
 echo "[3/4] 组装 runtime/（内嵌 Python 3.11，pip 预装，依赖留给用户侧 bat）..."
 mkdir -p "$OUT/runtime"
 unzip -q -o engine/embed/python-3.11.9-embed-amd64.zip -d "$OUT/runtime"
-# 嵌入式默认全隔离（不吃 site-packages）：追加这两行让 pip 装的包可被 import（ComfyUI 便携版同配方）
-printf 'python311.zip\n.\nLib\\site-packages\nimport site\n' > "$OUT/runtime/python311._pth"
+# 嵌入式默认全隔离（不吃 site-packages）：追加 Lib\site-packages + import site 让 pip 装的包可被
+# import（ComfyUI 便携版同配方）。..\engine 一行不可省：._pth 存在时脚本目录不进 sys.path，
+# 引擎的兄弟模块 import（emitter 等）靠它——路径相对 exe 目录（runtime\），上一级即应用根。
+cat > "$OUT/runtime/python311._pth" <<'EOF'
+python311.zip
+.
+..\engine
+Lib\site-packages
+import site
+EOF
 # pack 机一次性联网预装 pip（用户侧 bat 只装依赖，不做 pip 引导）
 "$OUT/runtime/python.exe" engine/embed/get-pip.py -i https://mirrors.aliyun.com/pypi/simple/ --no-warn-script-location -q
 
