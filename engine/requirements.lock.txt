@@ -92,6 +92,9 @@ scipy==1.17.1
 semver==3.0.4
 sentencepiece==0.2.2
 shellingham==1.5.4
+# setuptools 是 pip freeze 默认不列的隐式包，但 ctranslate2/__init__ 顶层 import pkg_resources——
+# venv 因 venv 创建自带而侥幸，内嵌 runtime 不带就崩（2026-10-02 E2E 实测），按 venv 实版本补上。
+setuptools==65.5.0
 six==1.17.0
 sortedcontainers==2.4.0
 soundfile==0.14.0
