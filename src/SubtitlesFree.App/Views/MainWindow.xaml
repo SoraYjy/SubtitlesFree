@@ -154,9 +154,9 @@
                 <Label Grid.Row="4" Grid.Column="0" Content="Python："/>
                 <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
                          Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="一般留空。仅当「检测环境」提示找不到 Python 时，才把 python.exe 的完整路径填到这里（例：C:\Users\你\AppData\Local\Programs\Python\Python311\python.exe）" Margin="0,2,0,2"/>
+                         ToolTip="一般留空。发布包自动使用自带的 runtime；仅源码运行且「检测环境」提示找不到 Python 时，才把 python.exe 的完整路径填到这里" Margin="0,2,0,2"/>
                 <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Foreground="Gray" FontSize="12"
-                           Text="转写引擎基于 Python（按 README「快速开始」①②步安装）。留空即可：应用会自动使用装好依赖的 Python，不需要手动填写。"
+                           Text="发布包无需填写：双击「安装依赖.bat」装好依赖后自动使用自带 runtime。仅源码运行且自动探测失败时才需要手动填路径。"
                            TextWrapping="Wrap" Margin="0,0,0,2"/>
 
                 <!-- 断句参数：MAX_CHARS / ABSORB_CHARS，透传引擎 segmentation.py -->
