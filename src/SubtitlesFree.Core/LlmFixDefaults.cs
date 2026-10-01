@@ -1,11 +1,16 @@
 namespace SubtitlesFree.Core;
 
 /// <summary>「懂你意思」默认修正 prompt。规则与引擎侧机械校验对齐：时间轴由 llm_fix.py
-/// 逐条校验强制不变，prompt 只需约束文本修改行为与存疑标注。</summary>
+/// 逐条校验强制不变，prompt 只需约束文本修改行为与存疑标注。约定：规则只说明道理，
+/// 不放举例（例子会诱导模型模仿例中字面而非理解规则）。</summary>
 public static class LlmFixDefaults
 {
-    /// <summary>v1 默认 prompt（2026-10-01 前）。用户若原样存着它，EnsureMigrated 迁为空=跟随新默认；
-    /// 已被替换，勿再改动此常量文本（迁移按逐字符比对）。</summary>
+    /// <summary>历史默认 prompt（时间序）。用户原样存着任一版 = 没定制过，EnsureMigrated
+    /// 清空以跟随当前默认。每次修改 Prompt 前把旧文本追加进 LegacyPrompts；
+    /// 已有条目文本勿动（迁移按逐字符比对）。</summary>
+    public static readonly string[] LegacyPrompts = [LegacyPrompt, LegacyPromptV2];
+
+    /// <summary>v1 默认（2026-10-01 前）。</summary>
     public const string LegacyPrompt =
         """
         你是字幕校对员。下面是一份视频字幕（SRT 格式）和这段视频的文案草稿，请按规则修正字幕：
@@ -17,7 +22,8 @@ public static class LlmFixDefaults
         6. 只输出修正后的完整 SRT，不要任何解释、前言或代码块标记。
         """;
 
-    public const string Prompt =
+    /// <summary>v2 默认（2026-10-01）：加了规则 5 但带举例，当版即废。</summary>
+    private const string LegacyPromptV2 =
         """
         你是字幕校对员。下面是一份视频字幕（SRT 格式）和这段视频的文案草稿，请按规则修正字幕：
         1. 严禁改动任何时间轴：输出的序号行、时间行必须与输入逐字一致，条数和顺序不变，只允许修改字幕文本行。
@@ -29,14 +35,26 @@ public static class LlmFixDefaults
         7. 只输出修正后的完整 SRT，不要任何解释、前言或代码块标记。
         """;
 
+    public const string Prompt =
+        """
+        你是字幕校对员。下面是一份视频字幕（SRT 格式）和这段视频的文案草稿，请按规则修正字幕：
+        1. 严禁改动任何时间轴：输出的序号行、时间行必须与输入逐字一致，条数和顺序不变，只允许修改字幕文本行。
+        2. 以文案草稿为参考理解视频内容，修正字幕中确有把握的听写错误（同音错字、专有名词写错、明显不通顺处）。
+        3. 文案草稿可能只是对视频内容的概述，并非逐字稿：不要把草稿语句搬进字幕，只用它辅助判断。
+        4. 文案草稿本身也可能不准确。字幕与草稿有出入但字幕看似合理、或你没有把握的地方，保持原文，并在该处后面加「【?】」标记供作者复核。
+        5. 名词、数字等实质性内容的整体替换必须标注：把一个专有名词或数字换成另一个，即使与草稿一致，也要在该处后面加「【?】」——草稿可能过时，作者录制时可能已口头纠正。仅修复同音错字不算替换，无需标注。
+        6. 只修正有把握的错误，没有把握就不改。
+        7. 只输出修正后的完整 SRT，不要任何解释、前言或代码块标记。
+        """;
+
     /// <summary>用户改过就用用户的，空白视为用默认。</summary>
     public static string Effective(string userPrompt)
         => string.IsNullOrWhiteSpace(userPrompt) ? Prompt : userPrompt;
 
-    /// <summary>用户原样存着 v1 默认 prompt = 没定制过，清空以跟随当前默认（一次性，幂等）。</summary>
+    /// <summary>用户原样存着任一历史默认 prompt = 没定制过，清空以跟随当前默认（幂等）。</summary>
     public static void EnsureMigrated(AppSettings settings)
     {
-        if (settings.LlmPrompt == LegacyPrompt)
+        if (LegacyPrompts.Contains(settings.LlmPrompt))
             settings.LlmPrompt = "";
     }
 }

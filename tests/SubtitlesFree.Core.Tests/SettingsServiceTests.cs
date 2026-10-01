@@ -132,6 +132,19 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void EnsureMigrated_AllLegacyVersions_BecomeEmpty()
+    {
+        // prompt 历版（如 v2 带例子）都算未定制；Assert.All 逐版迁移
+        Assert.True(LlmFixDefaults.LegacyPrompts.Length >= 2);
+        foreach (string legacy in LlmFixDefaults.LegacyPrompts)
+        {
+            var s = new AppSettings { LlmPrompt = legacy };
+            LlmFixDefaults.EnsureMigrated(s);
+            Assert.Equal("", s.LlmPrompt);
+        }
+    }
+
+    [Fact]
     public void EnsureMigrated_CustomPromptOrEmpty_Untouched()
     {
         var custom = new AppSettings { LlmPrompt = "我自己的校对规则" };
