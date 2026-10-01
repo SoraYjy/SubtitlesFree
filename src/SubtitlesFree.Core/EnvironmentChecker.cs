@@ -9,7 +9,9 @@ public sealed record EnvReport(
     bool WhisperXOk,
     bool ModelCached, string ModelDetail,
     string? GpuName, int? VramTotalMb, int? VramUsedMb,
-    bool FfmpegOk)
+    bool FfmpegOk,
+    string PythonPath = "",       // 探测实际用的解释器（"python" = PATH 裸名回退）
+    bool EmbeddedRuntime = false) // exe 旁有 runtime\python.exe（发布包布局）→ 缺项提示引导双击「安装依赖.bat」
 {
     public bool AllOk => PythonOk && TorchOk && WhisperXOk && ModelCached && FfmpegOk;
 }
@@ -24,6 +26,9 @@ public static class EnvironmentChecker
         string? pythonPath, string selectedModel, Action<string>? log = null)
     {
         string python = string.IsNullOrWhiteSpace(pythonPath) ? "python" : pythonPath;
+        // 发布包内嵌布局：只看 runtime\python.exe 在不在（装没装完由 ResolvePython 的 whisperx 守卫判断）。
+        // 这里只回答「这个应用是不是带 runtime 的发布包」→ 决定缺项提示引导双击 bat 还是给 pip 命令
+        bool embeddedRuntime = File.Exists(Path.Combine(AppContext.BaseDirectory, "runtime", "python.exe"));
 
         // 1) Python
         string? ver = (await RunCaptureAsync(python,
@@ -100,36 +105,60 @@ public static class EnvironmentChecker
         }
 
         return new EnvReport(pyOk, pyDetail, torchOk, cudaOk, torchSpec, cpuBuild,
-            whisperxOk, modelCached, modelDetail, gpuName, total, used, ffmpegOk);
+            whisperxOk, modelCached, modelDetail, gpuName, total, used, ffmpegOk,
+            python, embeddedRuntime);
     }
 
     /// <summary>EnvReport → 状态条逐项展示（纯函数）。缺项按项给修复提示；正常项 Hint 为空。
-    /// torch 失败按成因分三类：真未装（pip 命令）/ 装了加载失败（瞬时，重测）/ CPU 轮子（重装 cu124）。</summary>
+    /// torch 失败按成因分三类：真未装（bat/pip 命令）/ 装了加载失败（瞬时，重测）/ CPU 轮子（重装）。
+    /// 提示双态：发布包布局（EmbeddedRuntime）引导双击「安装依赖.bat」——用户没有全局 Python，
+    /// pip 命令对他们来说是错指令；源码布局保持 pip 命令。</summary>
     public static IReadOnlyList<EnvItem> BuildItems(EnvReport r)
     {
+        bool bat = r.EmbeddedRuntime;
+        string batHint = "双击本目录「安装依赖.bat」安装（装过则重跑，已装组件自动跳过）";
         string torchHint;
         if (!r.TorchOk)
             torchHint = r.TorchInstalledSpec
                 ? "torch 已安装但加载失败（多为驱动重置/杀软瞬时占用，与显卡游戏等同时刻易发）：稍后点「检测环境」重测；仍失败看日志「torch 导入报错」一行定位"
+                : bat ? batHint
                 : "pip install torch --index-url https://download.pytorch.org/whl/cu124";
         else if (!r.CudaOk)
             torchHint = r.CpuBuild
-                ? "torch 是 CPU 版轮子（无 CUDA，更新驱动也没用）：pip uninstall torch 后重装 pip install torch --index-url https://download.pytorch.org/whl/cu124"
+                ? bat
+                    ? "runtime 里是 CPU 版 torch（无 CUDA）：重跑「安装依赖.bat」装回 CUDA 版"
+                    : "torch 是 CPU 版轮子（无 CUDA，更新驱动也没用）：pip uninstall torch 后重装 pip install torch --index-url https://download.pytorch.org/whl/cu124"
                 : "CUDA 不可用：更新 NVIDIA 显卡驱动（否则回退 CPU，速度很慢）";
         else
             torchHint = "";
         return
         [
             new("Python", r.PythonOk,
-                r.PythonOk ? "" : "未找到可用的 python：检查设置中的 Python 路径（留空=自动探测 engine/.venv）"),
+                r.PythonOk ? "" : bat
+                    ? "未找到可用的 Python：双击本目录「安装依赖.bat」完成安装后重新检测"
+                    : "未找到可用的 python：检查设置中的 Python 路径（留空=自动探测 engine/.venv）"),
             new("torch+CUDA", r.TorchOk && r.CudaOk, torchHint),
             new("whisperx", r.WhisperXOk,
-                r.WhisperXOk ? "" : "pip install whisperx"),
+                r.WhisperXOk ? "" : bat ? batHint : "pip install whisperx"),
             new("模型缓存", r.ModelCached,
                 r.ModelCached ? "" : r.ModelDetail),
             new("ffmpeg", r.FfmpegOk,
                 r.FfmpegOk ? "" : "ffmpeg.exe 缺失：从仓库 engine/ffmpeg.exe 恢复，或安装到 PATH（winget install Gyan.FFmpeg）"),
         ];
+    }
+
+    /// <summary>Python 解析链（纯函数，AppServices 薄调）：设置值 → exe 旁 runtime\python.exe
+    /// （须 runtime\Lib\site-packages\whisperx 也存在 =「安装依赖.bat」已跑完，防半成品抢跑）
+    /// → engine 旁 .venv → PATH 裸名。开发流（bin/Debug 无 runtime/）行为不变。</summary>
+    public static string ResolvePython(string? settingsPath, string baseDir, string engineDir)
+    {
+        if (!string.IsNullOrWhiteSpace(settingsPath) && File.Exists(settingsPath)) return settingsPath;
+        string runtimePy = Path.Combine(baseDir, "runtime", "python.exe");
+        string runtimeWx = Path.Combine(baseDir, "runtime", "Lib", "site-packages", "whisperx");
+        if (File.Exists(runtimePy) && Directory.Exists(runtimeWx)) return runtimePy;
+        string venv = Path.Combine(engineDir, ".venv", "Scripts", "python.exe");
+        if (File.Exists(venv)) return venv;
+        return "python";
     }
 
     /// <summary>解析 nvidia-smi 一行输出："name, total_mb, used_mb"。</summary>

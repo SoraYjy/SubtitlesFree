@@ -88,10 +88,11 @@ public class EnvironmentCheckerTests
 
     private static EnvReport MakeReport(
         bool py = true, bool torch = true, bool cuda = true, bool wx = true,
-        bool model = true, bool ffmpeg = true, bool torchSpec = false, bool cpuBuild = false) =>
+        bool model = true, bool ffmpeg = true, bool torchSpec = false, bool cpuBuild = false,
+        string pythonPath = "", bool embedded = false) =>
         new(py, "Python 3.11", torch, cuda, torchSpec, cpuBuild, wx, model,
             model ? "已缓存" : "未缓存：应放到 <engine/models 目录>（首跑自动下载；国内可开镜像或按 README 用 ModelScope 预下载）",
-            "GPU", 12288, 100, ffmpeg);
+            "GPU", 12288, 100, ffmpeg, pythonPath, embedded);
 
     [Fact]
     public void BuildItems_AllOk_FiveGreenItemsNoHints()
@@ -204,5 +205,106 @@ public class EnvironmentCheckerTests
         {
             Directory.Delete(tmp, recursive: true);
         }
+    }
+
+    // ---- Python 解析链：设置值 → runtime（须装完 whisperx）→ .venv → PATH ----
+
+    [Fact]
+    public void ResolvePython_SettingsValue_WinsWhenFileExists()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), "sf-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(tmp);
+            string fakePy = Path.Combine(tmp, "fake-python.exe");
+            File.WriteAllText(fakePy, "");
+            Assert.Equal(fakePy, EnvironmentChecker.ResolvePython(fakePy, tmp, tmp));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void ResolvePython_CompleteRuntime_BeatsVenv()
+    {
+        // runtime\python.exe + site-packages\whisperx 齐备 = bat 已跑完 → 优先于 .venv（发布包语境）
+        string tmp = Path.Combine(Path.GetTempPath(), "sf-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            string app = Path.Combine(tmp, "app"), eng = Path.Combine(tmp, "engine");
+            Directory.CreateDirectory(Path.Combine(app, "runtime", "Lib", "site-packages", "whisperx"));
+            File.WriteAllText(Path.Combine(app, "runtime", "python.exe"), "");
+            Directory.CreateDirectory(Path.Combine(eng, ".venv", "Scripts"));
+            File.WriteAllText(Path.Combine(eng, ".venv", "Scripts", "python.exe"), "");
+            Assert.Equal(Path.Combine(app, "runtime", "python.exe"),
+                EnvironmentChecker.ResolvePython(null, app, eng));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void ResolvePython_HalfInstalledRuntime_SkippedFallsToVenv()
+    {
+        // bat 只跑了一半（无 whisperx）→ runtime 不算数，落 .venv；防半成品抢跑
+        string tmp = Path.Combine(Path.GetTempPath(), "sf-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            string app = Path.Combine(tmp, "app"), eng = Path.Combine(tmp, "engine");
+            Directory.CreateDirectory(Path.Combine(app, "runtime"));            // 有 python.exe
+            File.WriteAllText(Path.Combine(app, "runtime", "python.exe"), "");  // 没 whisperx
+            Directory.CreateDirectory(Path.Combine(eng, ".venv", "Scripts"));
+            File.WriteAllText(Path.Combine(eng, ".venv", "Scripts", "python.exe"), "");
+            Assert.Equal(Path.Combine(eng, ".venv", "Scripts", "python.exe"),
+                EnvironmentChecker.ResolvePython(null, app, eng));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void ResolvePython_NothingFound_BarePathName()
+    {
+        string nope = Path.Combine(Path.GetTempPath(), "sf-tests", Guid.NewGuid().ToString("N"));
+        Assert.Equal("python", EnvironmentChecker.ResolvePython(null, nope, nope));
+        // 设置值不存在也忽略（原行为保留）
+        Assert.Equal("python", EnvironmentChecker.ResolvePython(@"C:\no\such\python.exe", nope, nope));
+    }
+
+    // ---- 检测提示双态：runtime 布局引导双击 bat，源码布局保持 pip 命令 ----
+
+    [Fact]
+    public void BuildItems_EmbeddedLayout_MissingDepsHintBatNotPip()
+    {
+        var items = EnvironmentChecker.BuildItems(
+            MakeReport(py: false, torch: false, cuda: false, wx: false, embedded: true));
+        Assert.Contains("安装依赖.bat", items[0].Hint);                       // Python
+        Assert.Contains("安装依赖.bat", items[1].Hint);                       // torch+CUDA
+        Assert.DoesNotContain("pip install", items[1].Hint);                  // pip 命令对发布包用户是错指令
+        Assert.Contains("安装依赖.bat", items[2].Hint);                       // whisperx
+    }
+
+    [Fact]
+    public void BuildItems_TorchImportFail_KeepsRetestHintRegardlessOfLayout()
+    {
+        // 瞬时加载失败（驱动/杀软）的「重测」提示与布局无关
+        var torch = EnvironmentChecker.BuildItems(MakeReport(torch: false, cuda: false, torchSpec: true, embedded: true))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.Contains("已安装但加载失败", torch.Hint);
+        Assert.DoesNotContain("安装依赖.bat", torch.Hint);
+    }
+
+    [Fact]
+    public void BuildItems_CpuBuildInRuntimeLayout_HintsBatRerun()
+    {
+        var torch = EnvironmentChecker.BuildItems(MakeReport(cuda: false, cpuBuild: true, embedded: true))
+            .Single(i => i.Label == "torch+CUDA");
+        Assert.Contains("安装依赖.bat", torch.Hint);
+    }
+
+    [SkippableFact]
+    public async Task CheckAsync_ReportsPythonPathAndNoEmbeddedRuntimeInDev()
+    {
+        // 开发布局（bin/Debug 无 runtime/）：PythonPath=探测所用解释器，EmbeddedRuntime=false
+        var report = await EnvironmentChecker.CheckAsync(TestPython.Resolve(), "large-v3-turbo");
+        Assert.Equal(TestPython.Resolve(), report.PythonPath);
+        Assert.False(report.EmbeddedRuntime);
     }
 }

@@ -32,15 +32,11 @@ public sealed class AppServices
         throw new FileNotFoundException("找不到 engine/engine.py（应在应用目录或仓库内）");
     }
 
-    /// <summary>Python 解析顺序：设置值 → 引擎旁 .venv → PATH。</summary>
-    public string ResolvePython()
-    {
-        if (File.Exists(Settings.PythonPath)) return Settings.PythonPath;
-        string venv = Path.Combine(
-            Path.GetDirectoryName(EngineScriptPath)!, ".venv", "Scripts", "python.exe");
-        if (File.Exists(venv)) return venv;
-        return "python";
-    }
+    /// <summary>Python 解析：设置值 → exe 旁 runtime（bat 已装完）→ engine 旁 .venv → PATH。
+    /// 逻辑在 Core 纯函数（可单测），这里只喂路径。</summary>
+    public string ResolvePython() =>
+        EnvironmentChecker.ResolvePython(
+            Settings.PythonPath, AppContext.BaseDirectory, Path.GetDirectoryName(EngineScriptPath)!);
 
     public void SaveSettings()
     {
