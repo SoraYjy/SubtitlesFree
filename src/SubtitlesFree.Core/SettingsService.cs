@@ -19,6 +19,7 @@ public static class SettingsService
             if (!File.Exists(path)) return new AppSettings();
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
             HotwordLibrary.EnsureMigrated(settings); // 旧单串热词 → 「默认」组（一次性）
+            LlmFixDefaults.EnsureMigrated(settings); // 原样存着的 v1 默认 prompt → 空=跟随新默认
             return settings;
         }
         catch

@@ -118,4 +118,28 @@ public class SettingsServiceTests
         File.WriteAllText(path, "{ not json");
         Assert.Equivalent(new AppSettings(), SettingsService.Load(path));
     }
+
+    // ---- 懂你意思 prompt 迁移：用户存的「上一版默认」视为未定制，跟随新默认 ----
+
+    [Fact]
+    public void EnsureMigrated_LegacyDefaultPrompt_BecomesEmptyFollowsDefault()
+    {
+        var s = new AppSettings { LlmPrompt = LlmFixDefaults.LegacyPrompt };
+        LlmFixDefaults.EnsureMigrated(s);
+        Assert.Equal("", s.LlmPrompt); // 空 = 始终用当前默认，prompt 升级不再需要迁移
+        LlmFixDefaults.EnsureMigrated(s); // 幂等
+        Assert.Equal("", s.LlmPrompt);
+    }
+
+    [Fact]
+    public void EnsureMigrated_CustomPromptOrEmpty_Untouched()
+    {
+        var custom = new AppSettings { LlmPrompt = "我自己的校对规则" };
+        LlmFixDefaults.EnsureMigrated(custom);
+        Assert.Equal("我自己的校对规则", custom.LlmPrompt);
+
+        var empty = new AppSettings { LlmPrompt = "" };
+        LlmFixDefaults.EnsureMigrated(empty);
+        Assert.Equal("", empty.LlmPrompt);
+    }
 }
