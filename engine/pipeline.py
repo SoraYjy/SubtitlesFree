@@ -19,7 +19,7 @@ from pathlib import Path
 import emitter
 from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
-from llm_fix import build_change_report, fix_srt, read_srt_cues
+from llm_fix import build_change_report, change_report_path, fix_srt, read_srt_cues
 from segmentation import segment_cues
 from srt import write_srt
 from transcribe_text import build_initial_prompt, format_transcript, transcribe_blocks
@@ -182,7 +182,7 @@ def _run_llm_fix(args, srt_path: str) -> str:
         report = build_change_report(read_srt_cues(srt_text), read_srt_cues(fixed),
                                      model=args.llm_model, stats=info)
         if report:
-            report_path = ai_path.with_suffix(".ai.改动清单.txt")
+            report_path = change_report_path(ai_path)
             report_path.write_text(report, encoding="utf-8-sig")
             emit_log(f"改动清单：{report_path}")
     return str(ai_path)

@@ -1,4 +1,6 @@
 """llm_fix：懂你意思——SRT 解析/消息构造/机械校验合并/LLM 调用重试（transport 全 DI，不碰网络）。"""
+from pathlib import Path
+
 import llm_fix
 from llm_fix import (
     build_change_report,
@@ -295,3 +297,12 @@ def test_change_report_uncertain_only_marker_addition_counts():
     report = build_change_report(orig, fixed, model="m",
                                  stats={"status": "ok", "changed": 1, "kept": 0})
     assert "+ " in report and "【?】" in report
+
+
+def test_change_report_path_ai_srt_no_double_ai():
+    # 回归：1009AK12 实测产出「x.ai.ai.改动清单.txt」——suffix 参数里误带 .ai.
+    assert llm_fix.change_report_path("D:/out/1009AK12.ai.srt") == Path("D:/out/1009AK12.ai.改动清单.txt")
+
+
+def test_change_report_path_plain_srt():
+    assert llm_fix.change_report_path("D:/out/video.srt") == Path("D:/out/video.改动清单.txt")

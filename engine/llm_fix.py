@@ -11,6 +11,7 @@ whisper 解码伪影 U+FFFD 已在 segmentation._sanitize 清过，此处无需�
 """
 import re
 import time
+from pathlib import Path
 
 from bilingual import Cue
 from srt import format_ts, render_srt
@@ -150,6 +151,15 @@ def call_llm(messages: list[dict], *, key: str, model: str, url: str = DEEPSEEK_
 
 UNCERTAIN_MARK = "【?】"
 
+
+
+def change_report_path(ai_srt: str | Path) -> Path:
+    """改动清单路径：`视频名.ai.srt` → `视频名.ai.改动清单.txt`。
+
+    with_suffix 只换最后一个后缀——1009AK12 实测回归：suffix 参数里误带 ".ai." 会
+    产出 `x.ai.ai.改动清单.txt`。
+    """
+    return Path(ai_srt).with_suffix(".改动清单.txt")
 
 def build_change_report(orig: list[dict], new: list[dict], *, model: str,
                         stats: dict) -> str:
