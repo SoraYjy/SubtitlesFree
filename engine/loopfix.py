@@ -107,3 +107,22 @@ def splice(segments: list[dict],
     result = [s for s in segments if id(s) not in replaced_ids] + out
     result.sort(key=lambda s: s["start"])
     return result, report
+
+
+def repair_looped_segments(segments, *, decode, audio_dur, log):
+    """编排：检出 → 规划窗口 → 逐窗 decode(window) → 平移回绝对时间 → 拼接。
+    decode 由 pipeline 注入（惰性 CPU 副模型 + 音频切片），返回段为窗口相对时间。
+    log 回调收修复/保留的中文说明。未检出循环时 decode 零调用。"""
+    flagged = find_looped(segments)
+    if not flagged:
+        return segments, []
+    repairs_by_window = []
+    for (a, b) in repair_windows(flagged, audio_dur):
+        sub = decode((a, b)) or []
+        shifted = [{**r, "start": r["start"] + a, "end": r["end"] + a} for r in sub]
+        repairs_by_window.append(((a, b), shifted))
+    new_segments, report = splice(segments, repairs_by_window)
+    for r in report:
+        log(f"循环幻觉{'已修复' if r['action'] == 'repaired' else '检出但重解码无改善，保留原文'}"
+            f"：区间 {r['start']:.1f}-{r['end']:.1f}s")
+    return new_segments, report

@@ -1,5 +1,12 @@
 """loopfix：循环幻觉检测/窗口规划/重解码采纳拼接（decode 全 DI，不碰模型）。"""
-from loopfix import find_looped, is_loop_text, loop_run, repair_windows, splice
+from loopfix import (
+    find_looped,
+    is_loop_text,
+    loop_run,
+    repair_looped_segments,
+    repair_windows,
+    splice,
+)
 
 # 真实样本：1009AK12 生产循环段（前缀正常文本 + 「智耀」连排）
 LOOP_AK12 = ("如果你玩的是机密鼠工,不想花太多钱改枪。那就尤其我们今天的主角啊, "
@@ -110,3 +117,37 @@ def test_splice_empty_repairs_keeps_original():
     segs = [{"start": 6.0, "end": 18.0, "text": LOOP_AK12}]
     out, report = splice(segs, [((5.0, 19.0), [])])
     assert out == segs and report[0]["action"] == "kept"
+
+
+def test_repair_looped_segments_orchestration():
+    # decode 收到切片（相对时间），返回段由编排层平移回绝对时间
+    calls = []
+
+    def decode(window):
+        a, b = window
+        calls.append((round(a, 1), round(b, 1)))
+        return [{"start": 0.4, "end": 13.0, "text": "AK-12只要12-17万就能在机密硬钢高阶甲爽爽引操"}]
+
+    segs = [
+        {"start": 0.0, "end": 6.0, "text": "如果你玩的是机密鼠工不想花太多钱改枪"},
+        {"start": 6.0, "end": 18.0, "text": LOOP_AK12},
+    ]
+    out, report = repair_looped_segments(segs, decode=decode, audio_dur=116.0, log=lambda m: None)
+    assert calls == [(5.0, 19.0)]
+    assert report == [{"start": 6.0, "end": 18.0, "action": "repaired"}]
+    fixed = [s for s in out if "硬钢高阶甲" in s["text"]]
+    assert fixed and fixed[0]["start"] == 5.4   # 相对 0.4 + 窗口起点 5.0
+
+
+def test_repair_looped_segments_no_loop_no_decode():
+    calls = []
+
+    def decode(window):
+        calls.append(window)
+        return []
+
+    out, report = repair_looped_segments(
+        [{"start": 0.0, "end": 2.0, "text": "正常内容"}],
+        decode=decode, audio_dur=10.0, log=lambda m: None)
+    assert calls == [] and report == []
+    assert out[0]["text"] == "正常内容"

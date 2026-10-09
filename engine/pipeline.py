@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import emitter
+import loopfix
 from bilingual import match_en_to_cues
 from emitter import emit_log, emit_progress, emit_stage
 from llm_fix import build_change_report, change_report_path, fix_srt, read_srt_cues
@@ -225,8 +226,32 @@ def run_pipeline(args) -> None:
             emit_log("懂你意思只适用于 SRT 字幕，txt 转写已忽略", "warn")
         _run_txt(args, model, audio, video_sec, t0)
         return
+    def _make_repair_decoder(args):
+        """循环幻觉修复的惰性重解码器：CPU int8 副模型（不动主模型的 VRAM 与
+        热词 prompt），只留引导句——热词表正是循环诱因，不回注；失去的专有名词
+        纠错由懂你意思（LLM+文案）下游收补。仅在检出循环时才会真正加载。"""
+        GUIDE = "以下是普通话的句子。"
+        state: dict = {}
+
+        def decode(window):
+            import whisperx
+            if "model" not in state:
+                asr_dir = _local_asr_dir(args.model)
+                with _stdout_to_stderr():
+                    state["model"] = whisperx.load_model(
+                        asr_dir or args.model, "cpu", compute_type="int8",
+                        asr_options={"initial_prompt": GUIDE})
+            a, b = window
+            with _stdout_to_stderr():
+                return state["model"].transcribe(
+                    audio[a * 16000:b * 16000], batch_size=8, language="zh")["segments"]
+        return decode
+
     with _stdout_to_stderr():
         result = model.transcribe(audio, batch_size=16, language="zh")
+    result["segments"], _loop_report = loopfix.repair_looped_segments(
+        result["segments"], decode=_make_repair_decoder(args),
+        audio_dur=video_sec, log=lambda m: emit_log(m, "warn"))
     emit_progress(PROGRESS["transcribe"])
 
     emit_stage("align")
