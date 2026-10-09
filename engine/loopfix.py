@@ -57,3 +57,53 @@ def is_loop_text(text: str) -> bool:
 def find_looped(segments: list[dict]) -> list[dict]:
     """标记为循环的原始 segment 子集（保持原顺序）。"""
     return [s for s in segments if is_loop_text(s.get("text", ""))]
+
+
+def repair_windows(flagged: list[dict], audio_dur: float | None) -> list[tuple[float, float]]:
+    """循环 segment → 重解码窗口（前后各 PAD，相邻窗口重叠则合并）。"""
+    wins: list[list[float]] = []
+    for s in flagged:
+        a = max(0.0, s["start"] - PAD)
+        b = s["end"] + PAD if audio_dur is None else min(s["end"] + PAD, audio_dur)
+        if wins and a <= wins[-1][1]:
+            wins[-1][1] = max(wins[-1][1], b)
+        else:
+            wins.append([a, b])
+    return [(a, b) for a, b in wins]
+
+
+def _overlap_ratio(a: dict, b: dict) -> float:
+    """重叠时长 / 较短者时长。"""
+    inter = min(a["end"], b["end"]) - max(a["start"], b["start"])
+    if inter <= 0:
+        return 0.0
+    return inter / max(1e-9, min(a["end"] - a["start"], b["end"] - b["start"]))
+
+
+def splice(segments: list[dict],
+           repairs_by_window: list[tuple[tuple[float, float], list[dict]]]) -> tuple[list[dict], list[dict]]:
+    """按窗口采纳修复段：重解码仍循环或与正常邻段重叠过半（padding 压到邻段）的
+    修复段丢弃——什么都采纳不了就整窗保留原文（自校验，永不劣化）。
+    返回 (新 segments 按 start 排序, 修复报告 action=repaired|kept)。"""
+    flagged = find_looped(segments)
+    healthy = [s for s in segments if not is_loop_text(s.get("text", ""))]
+    out: list[dict] = []
+    report: list[dict] = []
+    replaced_ids: set[int] = set()
+    for win, repairs in repairs_by_window:
+        mine = [s for s in flagged if win[0] - 1e-6 <= s["start"] < win[1]]
+        span = (mine[0]["start"], mine[0]["end"]) if mine else (win[0], win[1])
+        joined = "".join(r["text"] for r in repairs)
+        adopted = [
+            dict(r) for r in repairs
+            if repairs and not is_loop_text(joined)
+            and not any(_overlap_ratio(r, h) > 0.5 for h in healthy)
+        ]
+        if adopted:
+            replaced_ids.update(id(s) for s in mine)
+            out.extend(adopted)
+        report.append({"start": span[0], "end": span[1],
+                       "action": "repaired" if adopted else "kept"})
+    result = [s for s in segments if id(s) not in replaced_ids] + out
+    result.sort(key=lambda s: s["start"])
+    return result, report
