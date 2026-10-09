@@ -244,7 +244,7 @@ def run_pipeline(args) -> None:
             a, b = window
             with _stdout_to_stderr():
                 return state["model"].transcribe(
-                    audio[a * 16000:b * 16000], batch_size=8, language="zh")["segments"]
+                    audio[int(a * 16000):int(b * 16000)], batch_size=8, language="zh")["segments"]
         return decode
 
     with _stdout_to_stderr():
