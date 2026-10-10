@@ -14,12 +14,14 @@ mkdir -p "$OUT"
 dotnet publish src/SubtitlesFree.App -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true -o "$OUT"
 
-echo "[2/4] 复制 engine 脚本（不含 venv/samples/模型）+ 内置 ffmpeg..."
+echo "[2/4] 复制 engine 脚本（不含 venv/samples/模型）+ 内置 ffmpeg + README..."
 mkdir -p "$OUT/engine"
 cp engine/*.py "$OUT/engine/"
 cp engine/requirements*.txt "$OUT/engine/"
 # ffmpeg 随仓库分发（engine/ffmpeg.exe），放 exe 旁——引擎启动时由 GUI 前置到子进程 PATH
 cp engine/ffmpeg.exe "$OUT/ffmpeg.exe"
+# 用户解压后第一眼看的就是它（安装/使用说明）
+cp README.md "$OUT/README.md"
 # 预构建 wheel：antlr4-python3-runtime 4.9.3 只有 sdist 且其打包缺 bin/pygrun，
 # 新版 setuptools 构建必炸——随包发现成 wheel，用户侧离线预装，lock 同名要求即已满足
 mkdir -p "$OUT/engine/embed"

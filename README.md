@@ -30,11 +30,11 @@ MP4 视频高精度 SRT 字幕生成器（Windows）。WhisperX 架构：VAD 切
 
 ## 快速开始
 
-以下两步均为一次性操作。
+从 [GitHub Releases](https://github.com/SoraYjy/SubtitlesFree/releases) 下载 `SubtitlesFree-win64-*.zip`，**解压到一个普通目录**（不要放 `C:\Program Files` 等需要管理员权限的位置，桌面/`D:\tools` 都行），然后按下面两步走——均为一次性操作，全部完成即可永久使用。
 
 ### ① 安装依赖（约 3.5GB，视网速 10~40 分钟）
 
-解压后进入应用目录，**双击 `安装依赖.bat`**，等窗口显示「安装完成」即可。依赖全部装进应用自带的 `runtime\` 文件夹，**不碰系统 Python 一个字节**；中途断网/关窗，重新双击一次即可续装（已装好的自动跳过）。
+进入解压目录，**双击 `安装依赖.bat`**，等窗口显示「INSTALL OK」即可。依赖全部装进应用自带的 `runtime\` 文件夹，**不碰系统 Python 一个字节**（不需要安装 Python，也不配置任何环境变量）；中途断网/关窗，重新双击一次即可续装（已装好的自动跳过）。
 
 > 杀毒软件若拦截 `runtime\python.exe` 写入，将其加入信任/临时放行后再双击一次。
 
@@ -56,13 +56,12 @@ runtime\python.exe -m modelscope download --model Systran/faster-whisper-large-v
 runtime\python.exe -m modelscope download --model Systran/faster-whisper-small --local_dir engine\models\small
 ```
 
-### ③ 首次运行
+### ③ 首次运行与基本使用
 
-1. 发布包：双击 `SubtitlesFree.exe`（源码：`dotnet run --project src/SubtitlesFree.App`，或 [打包](#从源码构建)）
-2. 点「检测环境」——五项全绿即就绪（Python / torch+CUDA / whisperx / 模型缓存 / ffmpeg）
-3. 拖入 MP4 → 「生成字幕」
-
-任何一项红叉时，状态条会直接给出该项的修复提示，照做后重新检测即可；详情同时打在日志面板里。
+1. 双击 `SubtitlesFree.exe`（免安装；绿色单文件）
+2. 点「检测环境」——五项全绿即就绪（runtime / torch+CUDA / whisperx / 模型缓存 / ffmpeg）；任何一项红叉时，状态条会直接给出该项的修复提示，照做后重新检测即可
+3. 把 MP4 拖进窗口（或点「选择视频」）→ 点「**生成字幕**」出 SRT 字幕；点「**转写文本**」则输出纯文本 TXT（逐段自动检测语言，不做时间轴，更快）
+4. 生成的文件在视频同目录，文件名同视频（`.srt` / `.txt`）；底部「打开输出所在文件夹」可直达
 
 > 有多 Python 项目隔离需求的高级用户：自建 venv 后把 python.exe 路径填进「设置 → Python」即可（应用留空时会自动按 runtime → engine/.venv → 系统 Python 的顺序探测）。源码开发见下「从源码构建」。
 
